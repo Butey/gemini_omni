@@ -1,0 +1,6 @@
+{
+  "name": "OmniAI Support Assistant",
+  "description": "AI-powered technical support assistant integrated with Omnidesk, featuring a dashboard, admin panel, and contextual response suggestions.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
