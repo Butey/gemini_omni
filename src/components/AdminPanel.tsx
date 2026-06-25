@@ -39,6 +39,8 @@ export default function AdminPanel({
   const [localSettings, setLocalSettings] = useState<AppSettings | null>(settings);
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState<string | null>(null);
+  const [repoSkillsModal, setRepoSkillsModal] = useState<{ owner: string, repo: string, branch: string, files: any[] } | null>(null);
+  const [selectedRepoSkills, setSelectedRepoSkills] = useState<Set<string>>(new Set());
   const [syncingBookStack, setSyncingBookStack] = useState(false);
   const [newSkillName, setNewSkillName] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -161,14 +163,57 @@ export default function AdminPanel({
     
     setImporting(key);
     try {
-      const res = await fetch('/api/admin/skills/import', {
+      if (key === 'skill_repo_url') {
+        const res = await fetch('/api/admin/skills/repo', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url })
+        });
+        const data = await res.json();
+        if (data.files && data.files.length > 0) {
+          setRepoSkillsModal(data);
+          setSelectedRepoSkills(new Set(data.files.map((f: any) => f.path)));
+        } else {
+          alert('No skills found in this repository.');
+        }
+      } else {
+        const res = await fetch('/api/admin/skills/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url, type: 'file' })
+        });
+        const data = await res.json();
+        if (data.skills) {
+          setLocalSettings({ ...localSettings, skills: data.skills });
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setImporting(null);
+    }
+  };
+
+  const executeBatchImport = async () => {
+    if (!repoSkillsModal || selectedRepoSkills.size === 0) return;
+    setImporting('skill_repo_url');
+    try {
+      const urls = Array.from(selectedRepoSkills).map(path => {
+        if (repoSkillsModal.owner === 'custom') {
+          const item = repoSkillsModal.files.find((f: any) => f.path === path);
+          return item ? item.url : path;
+        }
+        return `https://raw.githubusercontent.com/${repoSkillsModal.owner}/${repoSkillsModal.repo}/${repoSkillsModal.branch}/${path}`;
+      });
+      const res = await fetch('/api/admin/skills/import-batch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, type: key.includes('url') ? 'file' : 'repo' })
+        body: JSON.stringify({ urls })
       });
       const data = await res.json();
       if (data.skills) {
         setLocalSettings({ ...localSettings, skills: data.skills });
+        setRepoSkillsModal(null);
       }
     } catch (err) {
       console.error(err);
@@ -192,10 +237,10 @@ export default function AdminPanel({
       { key: 'max_tokens', label: 'Max Tokens', type: 'number', help: t.desc_tokens },
     ]},
     { title: t.integration_config, icon: Layers, fields: [
-      { key: 'skill_import_url', label: t.label_skill_url, type: 'text', help: t.desc_skill_url, canImport: true },
-      { key: 'skill_repo_url', label: t.label_repo_url, type: 'text', help: t.desc_repo_url, canImport: true },
+      { key: 'skill_import_url', label: t.label_skill_url, type: 'text', help: t.desc_skill_url, canImport: true, fullWidth: true },
+      { key: 'skill_repo_url', label: t.label_repo_url, type: 'text', help: t.desc_repo_url, canImport: true, fullWidth: true },
       { key: 'mcp_servers', label: t.label_mcp, type: 'textarea', help: t.desc_mcp },
-      { key: 'context_files', label: t.label_files, type: 'text', help: t.desc_files },
+      { key: 'context_files', label: t.label_files, type: 'text', help: t.desc_files, fullWidth: true },
     ]},
     { title: t.bookstack_config, icon: BookOpen, fields: [
       { key: 'bookstack_url', label: 'Instance URL', type: 'text', help: t.desc_bookstack_url },
@@ -304,7 +349,7 @@ export default function AdminPanel({
                    </div>
                 </div>
               ) : section.fields.map((field) => (
-                <div key={field.key} className={`space-y-4 ${field.type === 'textarea' || field.type === 'quick_actions' ? 'md:col-span-2 lg:col-span-3' : ''}`}>
+                <div key={field.key} className={`space-y-4 ${field.type === 'textarea' || field.type === 'quick_actions' || (field as any).fullWidth ? 'md:col-span-2 lg:col-span-3' : ''}`}>
                   <div className="flex items-center justify-between px-1">
                     <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] block">{field.label}</label>
                     {(field as any).help && (
@@ -404,6 +449,59 @@ export default function AdminPanel({
            </div>
         </div>
       </div>
+
+      {repoSkillsModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className={`w-full max-w-2xl max-h-[80vh] flex flex-col rounded-[2.5rem] border shadow-2xl overflow-hidden ${darkMode ? 'bg-zinc-900 border-white/10' : 'bg-white border-slate-200'}`}>
+            <div className={`p-6 border-b flex items-center justify-between ${darkMode ? 'border-white/10' : 'border-slate-100'}`}>
+              <h3 className={`font-black text-xl tracking-tight ${darkMode ? 'text-white' : 'text-slate-900'}`}>Select Skills to Install</h3>
+              <button onClick={() => setRepoSkillsModal(null)} className="p-2 rounded-xl bg-slate-500/10 text-slate-500 hover:bg-slate-500/20 transition-colors">
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto flex-1">
+              <div className="space-y-2">
+                {repoSkillsModal.files.map((file: any) => (
+                  <label key={file.path} className={`flex items-center gap-4 p-4 rounded-xl cursor-pointer transition-colors border ${darkMode ? 'border-white/5 hover:bg-white/5' : 'border-slate-100 hover:bg-slate-50'}`}>
+                    <input 
+                      type="checkbox" 
+                      className="w-5 h-5 accent-indigo-600 cursor-pointer"
+                      checked={selectedRepoSkills.has(file.path)}
+                      onChange={(e) => {
+                        const newSet = new Set(selectedRepoSkills);
+                        if (e.target.checked) newSet.add(file.path);
+                        else newSet.delete(file.path);
+                        setSelectedRepoSkills(newSet);
+                      }}
+                    />
+                    <div className="flex flex-col">
+                      <span className={`font-bold text-sm ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>{file.path}</span>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className={`p-6 border-t flex justify-end gap-4 ${darkMode ? 'border-white/10 bg-zinc-900/50' : 'border-slate-100 bg-slate-50'}`}>
+              <button 
+                onClick={() => setRepoSkillsModal(null)}
+                className={`px-6 py-3 rounded-xl font-bold text-xs transition-colors ${darkMode ? 'text-slate-300 hover:bg-white/10' : 'text-slate-600 hover:bg-slate-200'}`}
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={executeBatchImport}
+                disabled={selectedRepoSkills.size === 0 || importing === 'skill_repo_url'}
+                className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-black text-xs transition-all flex items-center gap-2 disabled:opacity-50 uppercase tracking-widest"
+              >
+                {importing === 'skill_repo_url' ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                Install Selected
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

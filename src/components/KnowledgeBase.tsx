@@ -16,12 +16,65 @@ import { KnowledgeBaseItem } from '../types';
 export default function KnowledgeBase({ darkMode, t }: { darkMode: boolean, t: any }) {
   const [items, setItems] = useState<KnowledgeBaseItem[]>([]);
   const [search, setSearch] = useState('');
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [formData, setFormData] = useState({ title: '', content: '', tags: '' });
 
-  useEffect(() => {
+  const fetchItems = () => {
     fetch('/api/knowledge-base')
       .then(res => res.json())
       .then(setItems);
+  };
+
+  useEffect(() => {
+    fetchItems();
   }, []);
+
+  const handleOpenModal = (item?: KnowledgeBaseItem) => {
+    if (item) {
+      setEditingId(item.id);
+      setFormData({
+        title: item.title,
+        content: item.content,
+        tags: item.tags.join(', ')
+      });
+    } else {
+      setEditingId(null);
+      setFormData({ title: '', content: '', tags: '' });
+    }
+    setIsModalOpen(true);
+  };
+
+  const handleSave = async () => {
+    const payload = {
+      title: formData.title,
+      content: formData.content,
+      tags: formData.tags.split(',').map(tag => tag.trim()).filter(Boolean)
+    };
+
+    if (editingId) {
+      await fetch(`/api/knowledge-base/${editingId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+    } else {
+      await fetch('/api/knowledge-base', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+    }
+    setIsModalOpen(false);
+    fetchItems();
+  };
+
+  const handleDelete = async (id: string) => {
+    if (confirm('Are you sure you want to delete this item?')) {
+      await fetch(`/api/knowledge-base/${id}`, { method: 'DELETE' });
+      fetchItems();
+    }
+  };
 
   const filteredItems = items.filter(i => 
     i.title.toLowerCase().includes(search.toLowerCase()) || 
@@ -40,7 +93,7 @@ export default function KnowledgeBase({ darkMode, t }: { darkMode: boolean, t: a
              <BrainCircuit className="w-4 h-4" />
              {t.reindex_kb}
           </button>
-          <button className="px-8 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl font-black text-[10px] flex items-center gap-2 transition-all shadow-[0_10px_25px_rgba(79,70,229,0.3)] uppercase tracking-[0.2em]">
+          <button onClick={() => handleOpenModal()} className="px-8 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl font-black text-[10px] flex items-center gap-2 transition-all shadow-[0_10px_25px_rgba(79,70,229,0.3)] uppercase tracking-[0.2em]">
             <Plus className="w-5 h-5" />
             {t.add_entity}
           </button>
@@ -93,8 +146,8 @@ export default function KnowledgeBase({ darkMode, t }: { darkMode: boolean, t: a
                  <span>Synced 2h ago</span>
                </div>
                <div className="flex gap-6">
-                 <button className="hover:text-indigo-600 transition-colors pointer-events-auto">EDIT</button>
-                 <button className="hover:text-red-500 transition-colors pointer-events-auto">DELETE</button>
+                 <button onClick={() => handleOpenModal(item)} className="hover:text-indigo-600 transition-colors pointer-events-auto">EDIT</button>
+                 <button onClick={() => handleDelete(item.id)} className="hover:text-red-500 transition-colors pointer-events-auto">DELETE</button>
                </div>
             </div>
           </div>
@@ -109,6 +162,62 @@ export default function KnowledgeBase({ darkMode, t }: { darkMode: boolean, t: a
             <p className="text-[10px] text-slate-500 max-w-[200px] font-black leading-relaxed uppercase tracking-widest">{t.ingest_desc}</p>
         </div>
       </div>
+
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className={`w-full max-w-lg p-6 rounded-3xl border ${darkMode ? 'bg-zinc-900 border-white/10' : 'bg-white border-slate-200'} shadow-2xl`}>
+            <h3 className={`text-xl font-bold mb-4 ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+              {editingId ? 'Edit Entity' : 'Add Entity'}
+            </h3>
+            
+            <div className="space-y-4">
+              <div>
+                <label className={`block text-xs font-bold mb-2 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Title</label>
+                <input
+                  type="text"
+                  value={formData.title}
+                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                  className={`w-full p-3 rounded-xl border text-sm focus:border-indigo-500/50 outline-none ${darkMode ? 'bg-black/40 border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'}`}
+                />
+              </div>
+              
+              <div>
+                <label className={`block text-xs font-bold mb-2 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Content</label>
+                <textarea
+                  value={formData.content}
+                  onChange={(e) => setFormData({ ...formData, content: e.target.value })}
+                  className={`w-full h-32 p-3 rounded-xl border text-sm resize-none focus:border-indigo-500/50 outline-none ${darkMode ? 'bg-black/40 border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'}`}
+                />
+              </div>
+
+              <div>
+                <label className={`block text-xs font-bold mb-2 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Tags (comma separated)</label>
+                <input
+                  type="text"
+                  value={formData.tags}
+                  onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
+                  className={`w-full p-3 rounded-xl border text-sm focus:border-indigo-500/50 outline-none ${darkMode ? 'bg-black/40 border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'}`}
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className={`px-6 py-2 rounded-xl text-xs font-bold transition-colors ${darkMode ? 'hover:bg-white/10 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSave}
+                className="px-6 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-colors"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

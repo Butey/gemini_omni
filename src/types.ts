@@ -25,7 +25,7 @@ export interface Suggestion {
 
 export interface AnalyticsRecord {
   id: string;
-  action: 'suggestion_generated' | 'suggestion_applied' | 'suggestion_rejected' | 'api_call';
+  action: 'suggestion_generated' | 'suggestion_applied' | 'suggestion_rejected' | 'api_call' | 'chat_request';
   metadata: any;
   timestamp: string;
 }

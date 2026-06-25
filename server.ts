@@ -151,11 +151,49 @@ app.post("/api/chat", async (req, res) => {
   logAnalytics('chat_request', { ticketId: ticketContext?.id });
 
   try {
+    let dynamicKnowledge = '';
+    
+    // Dynamically search BookStack if configured
+    if (settings.bookstack_url && settings.bookstack_token_id && settings.bookstack_token_secret) {
+      try {
+        const searchQuery = encodeURIComponent(userQuery || ticketContext?.subject || 'help');
+        const searchRes = await fetch(`${settings.bookstack_url.replace(/\/$/, '')}/api/search?query=${searchQuery}&count=3`, {
+          headers: {
+            'Authorization': `Token ${settings.bookstack_token_id}:${settings.bookstack_token_secret}`
+          }
+        });
+        
+        if (searchRes.ok) {
+          const searchData = await searchRes.json();
+          const pages = (searchData.data || []).filter((item: any) => item.type === 'page').slice(0, 3);
+          
+          for (const page of pages) {
+            const pageRes = await fetch(`${settings.bookstack_url.replace(/\/$/, '')}/api/pages/${page.id}`, {
+              headers: {
+                'Authorization': `Token ${settings.bookstack_token_id}:${settings.bookstack_token_secret}`
+              }
+            });
+            if (pageRes.ok) {
+              const pageData = await pageRes.json();
+              let cleanContent = pageData.markdown || pageData.html || '';
+              if (!pageData.markdown && pageData.html) {
+                cleanContent = pageData.html.replace(/<[^>]*>?/gm, '');
+              }
+              dynamicKnowledge += `- BookStack: ${pageData.name}: ${cleanContent.substring(0, 2000)}\n`;
+            }
+          }
+        }
+      } catch (err) {
+        console.error("BookStack Dynamic Search Error:", err);
+      }
+    }
+
     const prompt = `
       Context: ${settings.system_prompt}
       
       Relevant Knowledge Base:
       ${knowledgeBase.map(item => `- ${item.title}: ${item.content}`).join('\n')}
+      ${dynamicKnowledge}
       
       Ticket Context:
       Subject: ${ticketContext?.subject || 'N/A'}
@@ -332,9 +370,6 @@ app.post("/api/admin/skills/import", async (req, res) => {
     
     const content = await response.text();
     
-    // Simple logic to "integrate" skill: 
-    // In a real app we'd parse and store it properly.
-    // Here we'll append it to the skills settings.
     let currentSkills = [];
     try {
       currentSkills = JSON.parse(settings.skills || "[]");
@@ -345,7 +380,7 @@ app.post("/api/admin/skills/import", async (req, res) => {
     const newSkill = {
       id: Math.random().toString(36).substr(2, 5),
       name: url.split('/').pop(),
-      content: content.substring(0, 1000) + "...", // Truncate for display in settings
+      content: content.substring(0, 1000) + "...",
       enabled: true,
       source: url,
       imported_at: new Date().toISOString()
@@ -354,10 +389,92 @@ app.post("/api/admin/skills/import", async (req, res) => {
     currentSkills.push(newSkill);
     const updatedSkills = JSON.stringify(currentSkills, null, 2);
     
-    // We don't automatically save to settings here to let user review first in UI
     res.json({ skills: updatedSkills });
   } catch (error: any) {
     console.error("Import Error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Admin Repo Skills Fetch API
+app.post("/api/admin/skills/repo", async (req, res) => {
+  const { url } = req.body;
+  try {
+    const match = url.match(/github\.com\/([^/]+)\/([^/]+)/);
+    if (!match) {
+      // If it's not a GitHub repo, try to fetch it as a custom catalog (e.g., Nvidia NIM or custom JSON)
+      const catRes = await fetch(url);
+      if (catRes.ok) {
+        const data = await catRes.json();
+        const items = Array.isArray(data) ? data : (data.files || data.skills || data.models || []);
+        
+        if (items && items.length > 0) {
+          const files = items.map((item: any) => ({
+            path: item.name || item.path || item.id,
+            url: item.url || item.download_url || url + '/' + (item.id || item.path)
+          }));
+          return res.json({ files, owner: 'custom', repo: 'catalog', branch: 'main' });
+        }
+      }
+      return res.status(400).json({ error: "Invalid GitHub URL or Unsupported Catalog Format" });
+    }
+    const [, owner, repoName] = match;
+    const repo = repoName.replace(/\.git$/, '');
+    
+    let apiReq = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/trees/main?recursive=1`);
+    let branch = 'main';
+    
+    if (!apiReq.ok) {
+      apiReq = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/trees/master?recursive=1`);
+      branch = 'master';
+      if (!apiReq.ok) {
+         return res.status(400).json({ error: "Could not fetch repository tree" });
+      }
+    }
+    
+    const data = await apiReq.json();
+    const files = data.tree.filter((t: any) => t.type === 'blob' && (t.path.endsWith('.md') || t.path.endsWith('.json')));
+    res.json({ files, owner, repo, branch });
+  } catch(error: any) {
+    console.error("Repo Fetch Error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Admin Repo Skills Batch Import API
+app.post("/api/admin/skills/import-batch", async (req, res) => {
+  const { urls } = req.body;
+  try {
+    let currentSkills = [];
+    try {
+      currentSkills = JSON.parse(settings.skills || "[]");
+    } catch {
+      currentSkills = [];
+    }
+
+    for (const url of urls) {
+      try {
+        const response = await fetch(url);
+        if (response.ok) {
+          const content = await response.text();
+          currentSkills.push({
+            id: Math.random().toString(36).substr(2, 5),
+            name: url.split('/').pop(),
+            content: content.substring(0, 1000) + "...",
+            enabled: true,
+            source: url,
+            imported_at: new Date().toISOString()
+          });
+        }
+      } catch (err) {
+        console.error(`Failed to fetch ${url}`, err);
+      }
+    }
+
+    const updatedSkills = JSON.stringify(currentSkills, null, 2);
+    res.json({ skills: updatedSkills });
+  } catch (error: any) {
+    console.error("Batch Import Error:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -372,24 +489,51 @@ app.post("/api/admin/bookstack/sync", async (req, res) => {
   }
 
   try {
-    const response = await fetch(`${url.replace(/\/$/, '')}/api/pages`, {
-      headers: {
-        'Authorization': `Token ${id}:${secret}`
-      }
-    });
+    let allPages: any[] = [];
+    let offset = 0;
+    const limit = 100;
+    let hasMore = true;
 
-    if (!response.ok) throw new Error(`BookStack Error: ${response.statusText}`);
+    // Fetch all pages (pagination) but DO NOT fetch full HTML/Markdown content
+    while (hasMore) {
+      const response = await fetch(`${url.replace(/\/$/, '')}/api/pages?count=${limit}&offset=${offset}`, {
+        headers: {
+          'Authorization': `Token ${id}:${secret}`
+        }
+      });
+
+      if (!response.ok) throw new Error(`BookStack Error: ${response.statusText}`);
+      
+      const data = await response.json();
+      const pagesList = data.data || [];
+      allPages = allPages.concat(pagesList);
+      
+      if (offset + limit >= (data.total || 0) || pagesList.length === 0) {
+        hasMore = false;
+      } else {
+        offset += limit;
+      }
+    }
     
-    const data = await response.json();
+    // Remove old bookstack items from local KB
+    knowledgeBase.splice(0, knowledgeBase.length, ...knowledgeBase.filter(item => !item.tags.includes('bookstack')));
     
-    // In a real implementation, we would fetch details for each page and save to Knowledge Base
-    // For now, let's pretend we synced 5 pages
-    const mockSyncCount = Math.min(data.total || 0, 10);
+    // Store lightweight indices (title + link only)
+    for (const page of allPages) {
+      knowledgeBase.push({
+        id: `bookstack-${page.id}`,
+        title: page.name,
+        content: `BookStack Article ID: ${page.id}. Read more at: ${url.replace(/\/$/, '')}/books/${page.book_id}/page/${page.slug || page.id}`,
+        tags: ['bookstack']
+      });
+    }
+    
+    saveData();
     
     res.json({ 
       success: true, 
-      count: mockSyncCount,
-      message: `Successfully synchronized ${mockSyncCount} knowledge assets from BookStack.`
+      count: allPages.length,
+      message: `Successfully indexed ${allPages.length} articles from BookStack. Full content will be fetched dynamically via RAG.`
     });
   } catch (error: any) {
     console.error("BookStack Sync Error:", error);
@@ -402,6 +546,28 @@ app.post("/api/knowledge-base", (req, res) => {
   knowledgeBase.push(newItem);
   saveData();
   res.json(newItem);
+});
+
+app.put("/api/knowledge-base/:id", (req, res) => {
+  const index = knowledgeBase.findIndex(item => item.id === req.params.id);
+  if (index !== -1) {
+    knowledgeBase[index] = { ...knowledgeBase[index], ...req.body };
+    saveData();
+    res.json(knowledgeBase[index]);
+  } else {
+    res.status(404).json({ error: "Item not found" });
+  }
+});
+
+app.delete("/api/knowledge-base/:id", (req, res) => {
+  const index = knowledgeBase.findIndex(item => item.id === req.params.id);
+  if (index !== -1) {
+    knowledgeBase.splice(index, 1);
+    saveData();
+    res.json({ success: true });
+  } else {
+    res.status(404).json({ error: "Item not found" });
+  }
 });
 
 // Export Reports (Simulated)
