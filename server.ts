@@ -40,7 +40,7 @@ if (!fs.existsSync(STORAGE_DIR)) {
 let settings: AppSettings = {
   llm_endpoint: "gemini",
   model_name: "gemini-3.5-flash",
-  api_key_env_var: "GEMINI_API_KEY",
+  api_key: process.env.GEMINI_API_KEY || "",
   system_prompt: "You are a helpful technical support assistant for Omnidesk. Use the provided context to answer user queries accurately and professionally.",
   temperature: 0.7,
   top_p: 0.95,
@@ -121,8 +121,8 @@ const saveData = () => {
 loadData();
 
 // Gemini Initialization
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY || "",
+let ai = new GoogleGenAI({
+  apiKey: settings.api_key || process.env.GEMINI_API_KEY || "",
   httpOptions: {
     headers: {
       'User-Agent': 'aistudio-build',
@@ -348,7 +348,14 @@ app.get("/api/settings", (req, res) => {
 });
 
 app.post("/api/settings", (req, res) => {
+  const previousApiKey = settings.api_key;
   settings = { ...settings, ...req.body };
+  if (settings.api_key !== previousApiKey || !ai) {
+    ai = new GoogleGenAI({
+      apiKey: settings.api_key || process.env.GEMINI_API_KEY || "",
+      httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
+    });
+  }
   saveData();
   logAnalytics('api_call', { endpoint: '/api/settings', method: 'POST' });
   res.json({ status: "ok", settings });

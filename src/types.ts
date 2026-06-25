@@ -40,7 +40,7 @@ export interface KnowledgeBaseItem {
 export interface AppSettings {
   llm_endpoint: string;
   model_name: string;
-  api_key_env_var: string;
+  api_key: string;
   system_prompt: string;
   temperature: number;
   top_p: number;

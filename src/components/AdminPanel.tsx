@@ -228,7 +228,7 @@ export default function AdminPanel({
     { title: t.core_config, icon: Cpu, fields: [
       { key: 'llm_endpoint', label: 'LLM Endpoint', type: 'text', help: t.desc_llm_endpoint },
       { key: 'model_name', label: 'Model Name', type: 'text', help: t.desc_model_name },
-      { key: 'api_key_env_var', label: 'API Key Env Variable', type: 'text', help: t.desc_api_key },
+      { key: 'api_key', label: 'API Key', type: 'text', help: t.desc_api_key },
       { key: 'system_prompt', label: 'Global Instructions', type: 'textarea', help: t.desc_prompt },
     ]},
     { title: t.params_config, icon: Activity, fields: [
@@ -409,7 +409,7 @@ export default function AdminPanel({
                   ) : (
                     <div className="flex flex-col sm:flex-row gap-3">
                       <input 
-                        type={field.type === 'number' ? 'number' : 'text'}
+                        type={field.type === 'number' ? 'number' : (field.key.includes('key') || field.key.includes('secret') ? 'password' : 'text')}
                         value={(localSettings as any)[field.key]}
                         onChange={(e) => setLocalSettings({ ...localSettings, [field.key]: field.type === 'number' ? parseFloat(e.target.value) : e.target.value })}
                         className={`flex-1 p-5 rounded-2xl border transition-all font-bold text-xs outline-none focus:border-indigo-500/50 ${darkMode ? 'bg-black/40 border-white/10 text-slate-200' : 'bg-slate-50 border-slate-100 text-slate-900'}`}
