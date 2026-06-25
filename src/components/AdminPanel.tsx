@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import QuickActionsEditor from './QuickActionsEditor';
 import { 
   Terminal, 
   Cpu, 
@@ -209,7 +210,7 @@ export default function AdminPanel({
     { title: 'Localizations & UI', icon: Monitor, fields: [
       { key: 'language', label: 'Default Language', type: 'select', options: ['en', 'ru'] },
       { key: 'theme', label: 'Default Theme', type: 'select', options: ['light', 'dark'] },
-      { key: 'quick_actions', label: 'Quick Actions (JSON)', type: 'textarea', help: 'JSON array of buttons: [{ "icon": "emoji", "ru": "Russian text", "en": "English text", "prompt": "Prompt to send" }]' },
+      { key: 'quick_actions', label: 'Quick Actions', type: 'quick_actions', help: 'Configure buttons to quickly send predefined prompts.' },
     ]},
   ];
 
@@ -303,7 +304,7 @@ export default function AdminPanel({
                    </div>
                 </div>
               ) : section.fields.map((field) => (
-                <div key={field.key} className={`space-y-4 ${field.type === 'textarea' ? 'md:col-span-2 lg:col-span-3' : ''}`}>
+                <div key={field.key} className={`space-y-4 ${field.type === 'textarea' || field.type === 'quick_actions' ? 'md:col-span-2 lg:col-span-3' : ''}`}>
                   <div className="flex items-center justify-between px-1">
                     <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] block">{field.label}</label>
                     {(field as any).help && (
@@ -315,7 +316,13 @@ export default function AdminPanel({
                       </div>
                     )}
                   </div>
-                  {field.type === 'textarea' ? (
+                  {field.type === 'quick_actions' ? (
+                    <QuickActionsEditor
+                      value={(localSettings as any)[field.key] || ''}
+                      onChange={(newVal) => setLocalSettings({ ...localSettings, [field.key]: newVal })}
+                      darkMode={darkMode}
+                    />
+                  ) : field.type === 'textarea' ? (
                     <div className="relative group/textarea">
                       <textarea 
                         value={(localSettings as any)[field.key]}
