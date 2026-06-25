@@ -78,7 +78,15 @@ let settings: AppSettings = {
     gotify: { enabled: false, url: "" }
   },
   theme: 'dark',
-  language: 'ru'
+  language: 'ru',
+  quick_actions: JSON.stringify([
+    { icon: '📊', ru: 'Анализ кейса', en: 'Analyze Case', prompt: 'Проанализируй этот тикет и дай краткую сводку.' },
+    { icon: '❓', ru: 'Что запросить', en: 'What to ask', prompt: 'Что еще нужно запросить у клиента для решения проблемы?' },
+    { icon: '✂️', ru: 'Сократить', en: 'Shorten', prompt: 'Сократи предложенный ответ, сделай его более лаконичным.' },
+    { icon: '📝', ru: 'Формально', en: 'Formal', prompt: 'Перепиши ответ в более формальном и деловом стиле.' },
+    { icon: '🌐', ru: 'На English', en: 'To English', prompt: 'Переведи ответ на английский язык.' },
+    { icon: '💡', ru: 'Просто', en: 'Simple', prompt: 'Объясни решение простыми словами, без сложных терминов.' }
+  ])
 };
 
 let analyticsLogs: AnalyticsRecord[] = [];
@@ -150,13 +158,21 @@ app.post("/api/chat", async (req, res) => {
       ${knowledgeBase.map(item => `- ${item.title}: ${item.content}`).join('\n')}
       
       Ticket Context:
-      Subject: ${ticketContext?.subject}
-      Description: ${ticketContext?.description}
-      History: ${JSON.stringify(history)}
-      User Query: ${userQuery || 'Analyze the ticket and provide suggestions.'}
+      Subject: ${ticketContext?.subject || 'N/A'}
+      Description: ${ticketContext?.description || 'N/A'}
       
-      Provide a helpful response. Optionally, provide up to 3 diverse specific text suggestions the agent can directly apply.
-      Output ONLY valid JSON in the format: { "reply": "...", "suggestions": [{ "title": "...", "text": "...", "type": "Draft" }] }
+      Chat History: ${JSON.stringify(history)}
+      
+      Latest User Query: "${userQuery || 'Analyze the ticket and provide suggestions.'}"
+      
+      Instructions: 
+      You are an AI assistant helping a customer support agent. 
+      Respond directly to the "Latest User Query" taking into account the "Chat History" and "Ticket Context". 
+      Your response should be placed in the "reply" field. 
+      If appropriate, provide up to 3 diverse specific text suggestions the agent can directly apply as a reply to the customer.
+      
+      Output ONLY valid JSON in the exact format: 
+      { "reply": "Your conversational response to the agent here", "suggestions": [{ "title": "Short title", "text": "Draft reply to customer", "type": "Draft" }] }
     `;
 
     const response = await ai.models.generateContent({

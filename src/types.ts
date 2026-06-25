@@ -62,6 +62,7 @@ export interface AppSettings {
   };
   theme: 'light' | 'dark';
   language: 'ru' | 'en';
+  quick_actions?: string;
 }
 
 export interface User {

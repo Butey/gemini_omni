@@ -209,6 +209,7 @@ export default function AdminPanel({
     { title: 'Localizations & UI', icon: Monitor, fields: [
       { key: 'language', label: 'Default Language', type: 'select', options: ['en', 'ru'] },
       { key: 'theme', label: 'Default Theme', type: 'select', options: ['light', 'dark'] },
+      { key: 'quick_actions', label: 'Quick Actions (JSON)', type: 'textarea', help: 'JSON array of buttons: [{ "icon": "emoji", "ru": "Russian text", "en": "English text", "prompt": "Prompt to send" }]' },
     ]},
   ];
 

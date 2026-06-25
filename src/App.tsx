@@ -58,7 +58,7 @@ export default function App() {
   if (isWidgetMode) {
     return (
       <div className={`min-h-screen ${darkMode ? 'bg-[#09090b]' : 'bg-slate-50'} p-4`}>
-        <WidgetUI darkMode={darkMode} t={t} />
+        <WidgetUI darkMode={darkMode} t={t} settings={settings} />
       </div>
     );
   }
@@ -191,7 +191,7 @@ export default function App() {
               {activeTab === 'kb' && <KnowledgeBase darkMode={darkMode} t={t} />}
               {activeTab === 'admin' && <AdminPanel darkMode={darkMode} settings={settings} onUpdate={setSettings} t={t} />}
               {activeTab === 'integration' && <IntegrationGuide darkMode={darkMode} t={t} />}
-              {activeTab === 'widget' && <WidgetPreview darkMode={darkMode} t={t} />}
+              {activeTab === 'widget' && <WidgetPreview darkMode={darkMode} t={t} settings={settings} />}
             </motion.div>
           </AnimatePresence>
         </div>

@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Send, Bot, User, CornerDownRight, Sparkles, Copy, ThumbsUp, ThumbsDown, Brain, Settings } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Suggestion } from '../types';
+import { Suggestion, AppSettings } from '../types';
 
-export function WidgetUI({ darkMode, t }: { darkMode: boolean, t: any }) {
+export function WidgetUI({ darkMode, t, settings }: { darkMode: boolean, t: any, settings?: AppSettings | null }) {
   const [loading, setLoading] = useState(false);
   const [input, setInput] = useState('');
   const [chatHistory, setChatHistory] = useState<{ role: 'ai' | 'user', text: string, suggestions?: Suggestion[] }[]>([]);
@@ -51,13 +51,21 @@ export function WidgetUI({ darkMode, t }: { darkMode: boolean, t: any }) {
       });
       const data = await response.json();
       
+      if (!response.ok) {
+        throw new Error(data.error || 'Server error');
+      }
+
       setChatHistory(prev => [...prev, { 
         role: 'ai', 
         text: data.reply || (t.language === 'ru' ? 'Вот мои рекомендации по этому тикету:' : 'Here are my recommendations for this ticket:'),
         suggestions: data.suggestions || []
       }]);
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
+      setChatHistory(prev => [...prev, {
+        role: 'ai',
+        text: `Error: ${error.message}. Please check your API key and server settings.`
+      }]);
     } finally {
       setLoading(false);
     }
@@ -85,9 +93,9 @@ export function WidgetUI({ darkMode, t }: { darkMode: boolean, t: any }) {
                 </div>
              </div>
           </div>
-          <button className={`p-2.5 rounded-xl border transition-colors ${darkMode ? 'border-white/10 hover:bg-white/5 text-slate-400' : 'border-slate-100 hover:bg-slate-50 text-slate-500'}`}>
+          <a href="/" target="_blank" rel="noopener noreferrer" className={`p-2.5 rounded-xl border transition-colors inline-flex ${darkMode ? 'border-white/10 hover:bg-white/5 text-slate-400' : 'border-slate-100 hover:bg-slate-50 text-slate-500'}`}>
              <Settings className="w-4 h-4" />
-          </button>
+          </a>
         </div>
 
         <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-6 mb-6">
@@ -141,32 +149,64 @@ export function WidgetUI({ darkMode, t }: { darkMode: boolean, t: any }) {
           )}
         </div>
 
-        <div className="shrink-0 relative">
-          <input 
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-            placeholder={t.language === 'ru' ? 'Спросить ИИ...' : 'Ask AI...'}
-            className={`w-full p-5 pr-14 rounded-2xl border outline-none transition-all font-bold text-sm ${
-              darkMode 
-                ? 'bg-black/40 border-white/10 focus:border-indigo-500/50 text-white placeholder:text-slate-600' 
-                : 'bg-slate-50 border-slate-200 focus:border-indigo-500/50 text-slate-900 placeholder:text-slate-400'
-            }`}
-          />
-          <button 
-            onClick={() => handleSend()}
-            disabled={loading}
-            className="absolute right-3 top-1/2 -translate-y-1/2 p-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl shadow-lg shadow-indigo-600/30 transition-all disabled:opacity-50 active:scale-95"
-          >
-            <Send className="w-4 h-4" />
-          </button>
+        <div className="shrink-0 relative flex flex-col gap-3">
+          <div className="flex gap-2 overflow-x-auto pb-1 custom-scrollbar">
+             {(() => {
+               try {
+                 const actions = settings?.quick_actions ? JSON.parse(settings.quick_actions) : null;
+                 return (actions || [
+                   { icon: '📊', ru: 'Анализ кейса', en: 'Analyze Case', prompt: 'Проанализируй этот тикет и дай краткую сводку.' },
+                   { icon: '❓', ru: 'Что запросить', en: 'What to ask', prompt: 'Что еще нужно запросить у клиента для решения проблемы?' },
+                   { icon: '✂️', ru: 'Сократить', en: 'Shorten', prompt: 'Сократи предложенный ответ, сделай его более лаконичным.' },
+                   { icon: '📝', ru: 'Формально', en: 'Formal', prompt: 'Перепиши ответ в более формальном и деловом стиле.' },
+                   { icon: '🌐', ru: 'На English', en: 'To English', prompt: 'Переведи ответ на английский язык.' },
+                   { icon: '💡', ru: 'Просто', en: 'Simple', prompt: 'Объясни решение простыми словами, без сложных терминов.' }
+                 ]).map((action: any, i: number) => (
+                    <button 
+                      key={i}
+                      onClick={() => handleSend(action.prompt || (t.language === 'ru' ? action.ru : action.en))}
+                      className={`flex items-center gap-1.5 whitespace-nowrap px-3 py-1.5 rounded-lg border text-xs font-bold transition-colors ${
+                        darkMode 
+                          ? 'bg-white/5 border-white/10 hover:bg-white/10 text-slate-300' 
+                          : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-600 shadow-sm'
+                      }`}
+                    >
+                      <span>{action.icon}</span>
+                      {t.language === 'ru' ? action.ru : action.en}
+                    </button>
+                 ));
+               } catch (e) {
+                 return <div className="text-red-500 text-xs">Invalid Quick Actions JSON</div>;
+               }
+             })()}
+          </div>
+          <div className="relative">
+            <input 
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+              placeholder={t.language === 'ru' ? 'Спросить ИИ...' : 'Ask AI...'}
+              className={`w-full p-5 pr-14 rounded-2xl border outline-none transition-all font-bold text-sm ${
+                darkMode 
+                  ? 'bg-black/40 border-white/10 focus:border-indigo-500/50 text-white placeholder:text-slate-600' 
+                  : 'bg-slate-50 border-slate-200 focus:border-indigo-500/50 text-slate-900 placeholder:text-slate-400'
+              }`}
+            />
+            <button 
+              onClick={() => handleSend()}
+              disabled={loading}
+              className="absolute right-3 top-1/2 -translate-y-1/2 p-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl shadow-lg shadow-indigo-600/30 transition-all disabled:opacity-50 active:scale-95"
+            >
+              <Send className="w-4 h-4" />
+            </button>
+          </div>
         </div>
     </div>
   );
 }
 
-export default function WidgetPreview({ darkMode, t }: { darkMode: boolean, t: any }) {
+export default function WidgetPreview({ darkMode, t, settings }: { darkMode: boolean, t: any, settings?: AppSettings | null }) {
   const [messages, setMessages] = useState([
     { role: 'user', text: t.language === 'ru' ? 'Здравствуйте! Пытаюсь войти в свой аккаунт, но кнопка "Войти" не нажимается. Пробовал в разных браузерах.' : 'Hello! I am trying to log in but the "Login" button is not responding. I have tried multiple browsers.' },
     { role: 'agent', text: t.language === 'ru' ? 'Добрый день! Пожалуйста, очистите кэш вашего браузера и попробуйте еще раз.' : 'Good day! Please clear your browser cache and try again.' },
