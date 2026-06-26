@@ -3,7 +3,7 @@ services:
     build: .
     container_name: omniai-assistant
     ports:
-      - "3000:3000"
+      - "5555:3000"
     environment:
       - NODE_ENV=production
       - GEMINI_API_KEY=${GEMINI_API_KEY}

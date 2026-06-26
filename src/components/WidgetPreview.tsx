@@ -9,6 +9,14 @@ export function WidgetUI({ darkMode, t, settings }: { darkMode: boolean, t: any,
   const [chatHistory, setChatHistory] = useState<{ role: 'ai' | 'user', text: string, suggestions?: Suggestion[] }[]>([]);
   const hasRequestedInit = React.useRef(false);
 
+  const [caseNumber] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('case_number') || params.get('ticket_id') || 'OMNIDESK_ACTIVE_TICKET';
+    }
+    return 'OMNIDESK_ACTIVE_TICKET';
+  });
+
   // Messaging Bridge: Send content to Omnidesk Parent
   const applyDraft = (text: string) => {
     if (typeof window !== 'undefined' && window.parent) {
@@ -43,7 +51,7 @@ export function WidgetUI({ darkMode, t, settings }: { darkMode: boolean, t: any,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ticketContext: {
-            id: 'OMNIDESK_ACTIVE_TICKET',
+            id: caseNumber,
             description: "Context fetched from active Omnidesk ticket..."
           },
           history: chatHistory.map(h => ({ role: h.role === 'ai' ? 'assistant' : 'user', content: h.text })),
@@ -217,15 +225,23 @@ export default function WidgetPreview({ darkMode, t, settings }: { darkMode: boo
   const [loading, setLoading] = useState(false);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
 
+  const [caseNumber] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('case_number') || params.get('ticket_id') || '#4820';
+    }
+    return '#4820';
+  });
+
   const generateSuggestions = async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/suggestions', {
+      const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ticketContext: {
-            id: '#4820',
+            id: caseNumber,
             subject: 'Login Button Unresponsive',
             status: 'Open',
             priority: 'High',
@@ -257,7 +273,7 @@ export default function WidgetPreview({ darkMode, t, settings }: { darkMode: boo
                  {'Проблема с кнопкой входа'}
                </h3>
                <div className="flex flex-wrap items-center gap-3 mt-1.5">
-                  <span className="text-[10px] font-black uppercase text-slate-500 tracking-[0.2em]">Ticket #4820</span>
+                  <span className="text-[10px] font-black uppercase text-slate-500 tracking-[0.2em]">Ticket {caseNumber}</span>
                   <span className="w-1 h-1 bg-slate-500 rounded-full opacity-30" />
                   <span className="text-[10px] font-black uppercase text-slate-500 tracking-[0.2em]">isbuteev@gmail.com</span>
                   <span className="w-1 h-1 bg-slate-500 rounded-full opacity-30" />
