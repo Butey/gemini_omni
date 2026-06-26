@@ -12,6 +12,7 @@ import {
   MessageSquareQuote
 } from 'lucide-react';
 import { KnowledgeBaseItem } from '../types';
+import { apiFetch } from '../lib/api';
 
 export default function KnowledgeBase({ darkMode, t }: { darkMode: boolean, t: any }) {
   const [items, setItems] = useState<KnowledgeBaseItem[]>([]);
@@ -21,7 +22,7 @@ export default function KnowledgeBase({ darkMode, t }: { darkMode: boolean, t: a
   const [formData, setFormData] = useState({ title: '', content: '', tags: '' });
 
   const fetchItems = () => {
-    fetch('/api/knowledge-base')
+    apiFetch('/api/knowledge-base')
       .then(res => res.json())
       .then(setItems);
   };
@@ -53,13 +54,13 @@ export default function KnowledgeBase({ darkMode, t }: { darkMode: boolean, t: a
     };
 
     if (editingId) {
-      await fetch(`/api/knowledge-base/${editingId}`, {
+      await apiFetch(`/api/knowledge-base/${editingId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
     } else {
-      await fetch('/api/knowledge-base', {
+      await apiFetch('/api/knowledge-base', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -71,7 +72,7 @@ export default function KnowledgeBase({ darkMode, t }: { darkMode: boolean, t: a
 
   const handleDelete = async (id: string) => {
     if (confirm('Are you sure you want to delete this item?')) {
-      await fetch(`/api/knowledge-base/${id}`, { method: 'DELETE' });
+      await apiFetch(`/api/knowledge-base/${id}`, { method: 'DELETE' });
       fetchItems();
     }
   };

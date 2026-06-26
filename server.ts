@@ -148,6 +148,33 @@ const logAnalytics = (action: AnalyticsRecord['action'], metadata: any) => {
 
 // --- API Routes ---
 
+const requireAuth = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  if (!adminPassword) return next();
+
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader === `Bearer ${adminPassword}`) {
+    return next();
+  }
+  return res.status(401).json({ error: "Unauthorized" });
+};
+
+app.post("/api/auth/login", (req, res) => {
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  if (!adminPassword) return res.json({ success: true, token: "no-password-required" });
+
+  const { password } = req.body;
+  if (password === adminPassword) {
+    return res.json({ success: true, token: password });
+  }
+  return res.status(401).json({ error: "Invalid password" });
+});
+
+app.get("/api/auth/status", (req, res) => {
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  res.json({ required: !!adminPassword });
+});
+
 // Suggestions Engine
 app.post("/api/chat", async (req, res) => {
   const { ticketContext, history, userQuery } = req.body;
@@ -308,7 +335,7 @@ app.post("/api/chat", async (req, res) => {
 });
 
 // Analytics API
-app.get("/api/analytics", (req, res) => {
+app.get("/api/analytics", requireAuth, (req, res) => {
   res.json(analyticsLogs);
 });
 
@@ -409,14 +436,14 @@ app.get("/api/omnidesk/widget.js", (req, res) => {
 });
 
 // Settings API
-app.get("/api/settings", (req, res) => {
+app.get("/api/settings", requireAuth, (req, res) => {
   res.json({
     ...settings,
     api_key: settings.api_key || process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || ""
   });
 });
 
-app.post("/api/settings", (req, res) => {
+app.post("/api/settings", requireAuth, (req, res) => {
   const previousEffectiveKey = settings.api_key || process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || "";
   
   settings = { ...settings, ...req.body };
@@ -439,12 +466,12 @@ app.post("/api/settings", (req, res) => {
 });
 
 // Knowledge Base API
-app.get("/api/knowledge-base", (req, res) => {
+app.get("/api/knowledge-base", requireAuth, (req, res) => {
   res.json(knowledgeBase);
 });
 
 // Admin Skill Import API
-app.post("/api/admin/skills/import", async (req, res) => {
+app.post("/api/admin/skills/import", requireAuth, async (req, res) => {
   const { url, type } = req.body;
   logAnalytics('api_call', { endpoint: '/api/admin/skills/import', url, type });
 
@@ -481,7 +508,7 @@ app.post("/api/admin/skills/import", async (req, res) => {
 });
 
 // Admin Repo Skills Fetch API
-app.post("/api/admin/skills/repo", async (req, res) => {
+app.post("/api/admin/skills/repo", requireAuth, async (req, res) => {
   const { url } = req.body;
   try {
     const match = url.match(/github\.com\/([^/]+)\/([^/]+)/);
@@ -526,7 +553,7 @@ app.post("/api/admin/skills/repo", async (req, res) => {
 });
 
 // Admin Repo Skills Batch Import API
-app.post("/api/admin/skills/import-batch", async (req, res) => {
+app.post("/api/admin/skills/import-batch", requireAuth, async (req, res) => {
   const { urls } = req.body;
   try {
     let currentSkills = [];
@@ -564,7 +591,7 @@ app.post("/api/admin/skills/import-batch", async (req, res) => {
 });
 
 // Admin BookStack Sync API
-app.post("/api/admin/bookstack/sync", async (req, res) => {
+app.post("/api/admin/bookstack/sync", requireAuth, async (req, res) => {
   const { url, id, secret } = req.body;
   logAnalytics('api_call', { endpoint: '/api/admin/bookstack/sync', url });
 
@@ -625,14 +652,14 @@ app.post("/api/admin/bookstack/sync", async (req, res) => {
   }
 });
 
-app.post("/api/knowledge-base", (req, res) => {
+app.post("/api/knowledge-base", requireAuth, (req, res) => {
   const newItem = { id: Math.random().toString(36).substr(2, 9), ...req.body };
   knowledgeBase.push(newItem);
   saveData();
   res.json(newItem);
 });
 
-app.put("/api/knowledge-base/:id", (req, res) => {
+app.put("/api/knowledge-base/:id", requireAuth, (req, res) => {
   const index = knowledgeBase.findIndex(item => item.id === req.params.id);
   if (index !== -1) {
     knowledgeBase[index] = { ...knowledgeBase[index], ...req.body };
@@ -643,7 +670,7 @@ app.put("/api/knowledge-base/:id", (req, res) => {
   }
 });
 
-app.delete("/api/knowledge-base/:id", (req, res) => {
+app.delete("/api/knowledge-base/:id", requireAuth, (req, res) => {
   const index = knowledgeBase.findIndex(item => item.id === req.params.id);
   if (index !== -1) {
     knowledgeBase.splice(index, 1);
@@ -655,7 +682,7 @@ app.delete("/api/knowledge-base/:id", (req, res) => {
 });
 
 // Export Reports (Simulated)
-app.get("/api/export/csv", (req, res) => {
+app.get("/api/export/csv", requireAuth, (req, res) => {
   res.setHeader('Content-Type', 'text/csv');
   res.setHeader('Content-Disposition', 'attachment; filename=analytics_report.csv');
   const csv = "timestamp,action,metadata\n" + 

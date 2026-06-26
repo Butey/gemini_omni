@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { AppSettings } from '../types';
 import CustomModelsModal from './CustomModelsModal';
+import { apiFetch } from '../lib/api';
 
 export default function AdminPanel({ 
   darkMode, 
@@ -93,7 +94,7 @@ export default function AdminPanel({
     
     setSyncingBookStack(true);
     try {
-      const res = await fetch('/api/admin/bookstack/sync', {
+      const res = await apiFetch('/api/admin/bookstack/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -145,7 +146,7 @@ export default function AdminPanel({
     if (!localSettings) return;
     setSaving(true);
     try {
-      const res = await fetch('/api/settings', {
+      const res = await apiFetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(localSettings)
@@ -167,7 +168,7 @@ export default function AdminPanel({
     setImporting(key);
     try {
       if (key === 'skill_repo_url') {
-        const res = await fetch('/api/admin/skills/repo', {
+        const res = await apiFetch('/api/admin/skills/repo', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ url })
@@ -180,7 +181,7 @@ export default function AdminPanel({
           alert('No skills found in this repository.');
         }
       } else {
-        const res = await fetch('/api/admin/skills/import', {
+        const res = await apiFetch('/api/admin/skills/import', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ url, type: 'file' })
@@ -208,7 +209,7 @@ export default function AdminPanel({
         }
         return `https://raw.githubusercontent.com/${repoSkillsModal.owner}/${repoSkillsModal.repo}/${repoSkillsModal.branch}/${path}`;
       });
-      const res = await fetch('/api/admin/skills/import-batch', {
+      const res = await apiFetch('/api/admin/skills/import-batch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ urls })

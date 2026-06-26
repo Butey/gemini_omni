@@ -31,12 +31,15 @@ import IntegrationGuide from './components/IntegrationGuide';
 import { WidgetUI } from './components/WidgetPreview';
 import { AppSettings, User } from './types';
 import { translations } from './i18n';
+import Login from './components/Login';
+import { apiFetch } from './lib/api';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [darkMode, setDarkMode] = useState(true);
   const [language, setLanguage] = useState<'ru' | 'en'>('ru');
   const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [user] = useState<User>({
     id: 'u1',
     name: 'Admin User',
@@ -50,10 +53,62 @@ export default function App() {
   const isWidgetMode = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('mode') === 'widget';
 
   useEffect(() => {
-    fetch('/api/settings')
-      .then(res => res.json())
-      .then(setSettings);
-  }, []);
+    const handleAuthRequired = () => setIsAuthenticated(false);
+    window.addEventListener('auth_required', handleAuthRequired);
+    
+    // Check initial auth status
+    if (!isWidgetMode) {
+      apiFetch('/api/auth/status')
+        .then(res => res.json())
+        .then(data => {
+          if (!data.required) {
+            setIsAuthenticated(true);
+            fetchSettings();
+          } else {
+            const token = localStorage.getItem('admin_token');
+            if (token) {
+              // Try to fetch settings with the token to verify it
+              fetchSettings();
+            } else {
+              setIsAuthenticated(false);
+            }
+          }
+        });
+    } else {
+       // Widget mode doesn't need to authenticate against admin routes right away
+       fetchSettings();
+    }
+
+    return () => window.removeEventListener('auth_required', handleAuthRequired);
+  }, [isWidgetMode]);
+
+  const fetchSettings = () => {
+    apiFetch('/api/settings')
+      .then(res => {
+         if (res.ok) {
+            setIsAuthenticated(true);
+            return res.json();
+         } else if (res.status === 401) {
+            setIsAuthenticated(false);
+            return null;
+         }
+         return null;
+      })
+      .then(data => {
+         if (data) setSettings(data);
+      });
+  };
+
+  const handleLogin = (token: string) => {
+    localStorage.setItem('admin_token', token);
+    setIsAuthenticated(true);
+    fetchSettings();
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('admin_token');
+    setIsAuthenticated(false);
+  };
 
   if (isWidgetMode) {
     return (
@@ -61,6 +116,18 @@ export default function App() {
         <WidgetUI darkMode={darkMode} t={t} settings={settings} />
       </div>
     );
+  }
+
+  if (isAuthenticated === null) {
+    return (
+      <div className={`min-h-screen flex items-center justify-center ${darkMode ? 'bg-[#09090b] text-slate-100' : 'bg-slate-50 text-slate-900'}`}>
+        <div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (isAuthenticated === false) {
+    return <Login onLogin={handleLogin} darkMode={darkMode} />;
   }
 
   const toggleTheme = () => setDarkMode(!darkMode);
@@ -113,7 +180,7 @@ export default function App() {
                 <span className={`text-[10px] font-bold ${darkMode ? 'text-slate-400' : 'text-slate-500'} uppercase tracking-tight`}>SSO Authorized</span>
               </div>
             </div>
-            <button className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-all ${darkMode ? 'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10' : 'bg-white border-slate-200 shadow-sm text-slate-600 hover:bg-slate-50'} border`}>
+            <button onClick={handleLogout} className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-all ${darkMode ? 'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10' : 'bg-white border-slate-200 shadow-sm text-slate-600 hover:bg-slate-50'} border`}>
               <LogOut className="w-3.5 h-3.5" />
               {t.sign_out}
             </button>
@@ -149,8 +216,8 @@ export default function App() {
                     const newModel = e.target.value;
                     const updated = { ...settings, model_name: newModel };
                     setSettings(updated);
-                    await fetch('/api/settings', {
-                      method: 'PUT',
+                    await apiFetch('/api/settings', {
+                      method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify(updated)
                     });

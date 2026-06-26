@@ -11,6 +11,7 @@ import {
   Area
 } from 'recharts';
 import { TrendingUp, Users, CheckCircle, Clock, Info } from 'lucide-react';
+import { apiFetch } from '../lib/api';
 
 export default function Dashboard({ darkMode, t }: { darkMode: boolean, t: any }) {
   const [stats, setStats] = useState({
@@ -26,7 +27,7 @@ export default function Dashboard({ darkMode, t }: { darkMode: boolean, t: any }
   useEffect(() => {
     const fetchAnalytics = async () => {
       try {
-        const response = await fetch('/api/analytics');
+        const response = await apiFetch('/api/analytics');
         const logs = await response.json();
         
         const chatLogs = logs.filter((l: any) => l.action === 'chat_request' || l.action === 'suggestion_generated');

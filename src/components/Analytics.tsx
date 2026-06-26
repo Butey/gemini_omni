@@ -11,13 +11,14 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { AnalyticsRecord } from '../types';
+import { apiFetch } from '../lib/api';
 
 export default function Analytics({ darkMode, t }: { darkMode: boolean, t: any }) {
   const [logs, setLogs] = useState<AnalyticsRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/api/analytics')
+    apiFetch('/api/analytics')
       .then(res => res.json())
       .then(data => {
         setLogs(data);
