@@ -253,6 +253,7 @@ export default function AdminPanel({
       { key: 'bookstack_token_secret', label: 'Token Secret', type: 'text', help: t.desc_bookstack_secret },
     ], canSync: true },
     { title: t.omnidesk_config, icon: Key, fields: [
+      { key: 'omnidesk_domain', label: 'Omnidesk Domain', type: 'text', help: 'Например, iridi.omnidesk.ru' },
       { key: 'omnidesk_api_key', label: 'Omnidesk API Key', type: 'text', help: t.desc_omnidesk_api },
       { key: 'omnidesk_email', label: 'Admin Email', type: 'text', help: t.desc_omnidesk_email },
     ]},

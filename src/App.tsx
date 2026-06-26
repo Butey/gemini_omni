@@ -112,9 +112,7 @@ export default function App() {
 
   if (isWidgetMode) {
     return (
-      <div className="p-4">
-        <WidgetUI darkMode={darkMode} t={t} settings={settings} />
-      </div>
+      <WidgetUI darkMode={darkMode} t={t} settings={settings} />
     );
   }
 

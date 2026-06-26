@@ -7,7 +7,7 @@ export function WidgetUI({ darkMode, t, settings }: { darkMode: boolean, t: any,
   const [loading, setLoading] = useState(false);
   const [input, setInput] = useState('');
   const [chatHistory, setChatHistory] = useState<{ role: 'ai' | 'user', text: string, suggestions?: Suggestion[] }[]>([]);
-  const [isCollapsed, setIsCollapsed] = useState(true);
+  const [isCollapsed, setIsCollapsed] = useState(false);
   const hasRequestedInit = React.useRef(false);
 
   // Send resize event to parent window when collapsed state changes
@@ -28,9 +28,16 @@ export function WidgetUI({ darkMode, t, settings }: { darkMode: boolean, t: any,
     return 'OMNIDESK_ACTIVE_TICKET';
   });
 
+  const [isStandalone] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return window.self === window.top;
+    }
+    return false;
+  });
+
   // Messaging Bridge: Send content to Omnidesk Parent
   const applyDraft = (text: string) => {
-    if (typeof window !== 'undefined' && window.parent) {
+    if (typeof window !== 'undefined' && window.parent && !isStandalone) {
       window.parent.postMessage({
         type: 'OMNIDESK_INJECT_RESPONSE',
         content: text
@@ -41,6 +48,15 @@ export function WidgetUI({ darkMode, t, settings }: { darkMode: boolean, t: any,
       if (btn) {
         const originalText = btn.innerText;
         btn.innerText = 'Применено!';
+        setTimeout(() => { btn.innerText = originalText; }, 2000);
+      }
+    } else {
+      // In standalone mode, just copy to clipboard
+      navigator.clipboard.writeText(text);
+      const btn = document.activeElement as HTMLElement;
+      if (btn) {
+        const originalText = btn.innerText;
+        btn.innerText = 'Скопировано!';
         setTimeout(() => { btn.innerText = originalText; }, 2000);
       }
     }
@@ -99,7 +115,7 @@ export function WidgetUI({ darkMode, t, settings }: { darkMode: boolean, t: any,
     }
   }, []);
 
-  return (
+  const content = (
     <div className={`${isCollapsed ? 'h-auto pb-6' : 'h-[calc(100vh-2rem)]'} p-6 rounded-[2rem] border transition-all flex flex-col ${darkMode ? 'border-indigo-500/30 bg-slate-900 shadow-2xl' : 'border-indigo-100 bg-white shadow-2xl shadow-indigo-500/10'}`}>
         <div className={`flex items-center justify-between shrink-0 ${isCollapsed ? '' : 'mb-6'}`}>
           <div className="flex items-center gap-3">
@@ -234,6 +250,23 @@ export function WidgetUI({ darkMode, t, settings }: { darkMode: boolean, t: any,
         )}
     </div>
   );
+
+  if (isStandalone) {
+    return (
+      <div className={`min-h-screen ${darkMode ? 'bg-[#09090b]' : 'bg-slate-50'} flex flex-col items-center p-4`}>
+        <div className="w-full max-w-[400px] mt-10">
+          <div className={`mb-4 p-4 rounded-xl text-sm ${darkMode ? 'bg-indigo-500/20 text-indigo-200 border border-indigo-500/30' : 'bg-indigo-50 text-indigo-700 border border-indigo-200'}`}>
+            <p className="font-bold mb-1">Режим отладки (Standalone)</p>
+            <p>Вы открыли виджет вне Omnidesk по прямой ссылке. Тикет будет проанализирован с использованием заглушки, так как прямое обращение к API Omnidesk со стороны фронтенда блокируется CORS, а бэкенд не имеет адреса портала для вызова API.</p>
+            <p className="mt-2 text-xs opacity-75">При нажатии "Вставить в ответ" текст будет скопирован в буфер обмена.</p>
+          </div>
+          {content}
+        </div>
+      </div>
+    );
+  }
+
+  return content;
 }
 
 export default function WidgetPreview({ darkMode, t, settings }: { darkMode: boolean, t: any, settings?: AppSettings | null }) {

@@ -76,6 +76,7 @@ let settings: AppSettings = {
   bookstack_token_secret: "",
   omnidesk_api_key: "",
   omnidesk_email: "",
+  omnidesk_domain: "iridi.omnidesk.ru",
   enable_context: true,
   notification_channels: {
     telegram: { enabled: false, chat_id: "" },
@@ -175,11 +176,84 @@ app.get("/api/auth/status", (req, res) => {
   res.json({ required: !!adminPassword });
 });
 
+async function fetchOmnideskTicketContext(caseNumber: string) {
+  console.log('fetchOmnideskTicketContext called with:', caseNumber);
+  console.log('Settings:', !!settings.omnidesk_domain, !!settings.omnidesk_api_key, !!settings.omnidesk_email);
+  if (!settings.omnidesk_domain || !settings.omnidesk_api_key || !settings.omnidesk_email) return null;
+  try {
+    const caseIdMatch = caseNumber.match(/([0-9-]+)$/);
+    if (!caseIdMatch) {
+      console.log('No case id match found in', caseNumber);
+      return null;
+    }
+    const caseId = caseIdMatch[1];
+    
+    const domain = settings.omnidesk_domain.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    const auth = Buffer.from(`${settings.omnidesk_email}:${settings.omnidesk_api_key}`).toString('base64');
+    
+    console.log(`Fetching from: https://${domain}/api/cases/${caseId}.json`);
+    const caseRes = await fetch(`https://${domain}/api/cases/${caseId}.json`, {
+      headers: { 'Authorization': `Basic ${auth}`, 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(5000)
+    });
+    
+    console.log('caseRes status:', caseRes.status);
+    if (!caseRes.ok) {
+      console.log('caseRes text:', await caseRes.text());
+      return null;
+    }
+    const caseData = await caseRes.json();
+    const caseInfo = caseData.case || {};
+    
+    const msgsRes = await fetch(`https://${domain}/api/cases/${caseId}/messages.json`, {
+      headers: { 'Authorization': `Basic ${auth}`, 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(5000)
+    });
+    console.log('msgsRes status:', msgsRes.status);
+    let description = '';
+    if (msgsRes.ok) {
+      const msgsData = await msgsRes.json();
+      
+      let msgsArray: any[] = [];
+      if (Array.isArray(msgsData)) {
+        msgsArray = msgsData;
+      } else if (msgsData._embedded?.messages) {
+        msgsArray = msgsData._embedded.messages;
+      } else if (typeof msgsData === 'object' && msgsData !== null) {
+        // Handle {"0": {"message": ...}, "1": ...}
+        msgsArray = Object.values(msgsData);
+      }
+      
+      description = msgsArray.map((m: any) => {
+        const msg = m.message || m;
+        return `${msg.user_id ? 'CLIENT' : 'STAFF'}: ${msg.content_html ? msg.content_html.replace(/<[^>]+>/g, '') : msg.content}`;
+      }).join('\n\n');
+    }
+    
+    console.log('Extracted description length:', description.length);
+    return {
+      subject: caseInfo.subject || '',
+      description: description || 'No messages found.'
+    };
+  } catch (err) {
+    console.error('Error fetching Omnidesk ticket:', err);
+    return null;
+  }
+}
+
 // Suggestions Engine
 app.post("/api/chat", async (req, res) => {
   const { ticketContext, history, userQuery } = req.body;
   
-  logAnalytics('chat_request', { ticketId: ticketContext?.id });
+  let actualTicketContext = ticketContext;
+  if (ticketContext?.id && (!ticketContext.description || ticketContext.description.includes('Context fetched from active Omnidesk ticket'))) {
+    const fetchedContext = await fetchOmnideskTicketContext(ticketContext.id);
+    if (fetchedContext) {
+      actualTicketContext = { ...ticketContext, ...fetchedContext };
+    }
+  }
+
+  logAnalytics('chat_request', { ticketId: actualTicketContext?.id });
 
   try {
     let dynamicKnowledge = '';
@@ -187,7 +261,7 @@ app.post("/api/chat", async (req, res) => {
     // Dynamically search BookStack if configured
     if (settings.bookstack_url && settings.bookstack_token_id && settings.bookstack_token_secret) {
       try {
-        const searchQuery = encodeURIComponent(userQuery || ticketContext?.subject || 'help');
+        const searchQuery = encodeURIComponent(userQuery || actualTicketContext?.subject || 'help');
         const searchRes = await fetch(`${settings.bookstack_url.replace(/\/$/, '')}/api/search?query=${searchQuery}&count=3`, {
           headers: {
             'Authorization': `Token ${settings.bookstack_token_id}:${settings.bookstack_token_secret}`
@@ -229,8 +303,8 @@ app.post("/api/chat", async (req, res) => {
       ${dynamicKnowledge}
       
       Ticket Context:
-      Subject: ${ticketContext?.subject || 'N/A'}
-      Description: ${ticketContext?.description || 'N/A'}
+      Subject: ${actualTicketContext?.subject || 'N/A'}
+      Description: ${actualTicketContext?.description || 'N/A'}
       
       Chat History: ${JSON.stringify(history)}
       
@@ -371,22 +445,25 @@ app.get("/api/omnidesk/widget.js", (req, res) => {
       return true; // Already initialized
     }
     
-    // Try to find the ticket response area, or any right sidebar
-    var renderTarget = document.getElementById('response_answer_area') || 
+    // Try to find the ticket response area to inject below it
+    var renderTarget = document.getElementById('reply_wrapper') ||
+                       document.querySelector('.reply-wrapper') ||
+                       document.getElementById('reply_block') ||
+                       document.getElementById('msg_form') ||
+                       document.querySelector('.msg-form') ||
+                       document.getElementById('response_answer_area') || 
                        document.querySelector('.request-area') || 
-                       document.querySelector('#case_message_area');
+                       document.querySelector('#case_message_area') ||
+                       document.querySelector('.case-content');
     
     if (renderTarget) {
       console.log('OmniAI Widget: Found target container, injecting iframe');
       var container = document.createElement('div');
       container.id = 'omniai-widget-container';
       container.style.marginTop = '20px';
-      container.style.marginBottom = '20px';
-      container.style.border = '1px solid #e2e8f0';
-      container.style.borderRadius = '12px';
-      container.style.overflow = 'hidden';
-      container.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1)';
-      container.style.backgroundColor = '#ffffff';
+      container.style.marginBottom = '40px';
+      container.style.width = '100%';
+      container.style.clear = 'both';
       
       var iframe = document.createElement('iframe');
       iframe.src = '${widgetUrl}';
@@ -394,6 +471,8 @@ app.get("/api/omnidesk/widget.js", (req, res) => {
       iframe.style.height = '600px';
       iframe.style.border = 'none';
       iframe.style.display = 'block';
+      iframe.style.borderRadius = '12px';
+      iframe.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1)';
       
       container.appendChild(iframe);
       

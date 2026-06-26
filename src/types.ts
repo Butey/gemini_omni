@@ -64,6 +64,7 @@ export interface AppSettings {
   bookstack_token_secret: string;
   omnidesk_api_key: string;
   omnidesk_email: string;
+  omnidesk_domain: string;
   enable_context: boolean;
   notification_channels: {
     telegram: { enabled: boolean; chat_id: string };
