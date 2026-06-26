@@ -13,7 +13,7 @@ RUN npm install && npm cache clean --force
 COPY . .
 
 # Set memory limit for the build process to prevent OOM on small VPS
-ENV NODE_OPTIONS="--max-old-space-size=256"
+ENV NODE_OPTIONS="--max-old-space-size=512"
 
 # Build the application
 RUN npm run build
