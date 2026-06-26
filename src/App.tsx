@@ -112,7 +112,7 @@ export default function App() {
 
   if (isWidgetMode) {
     return (
-      <div className={`min-h-screen ${darkMode ? 'bg-[#09090b]' : 'bg-slate-50'} p-4`}>
+      <div className="p-4">
         <WidgetUI darkMode={darkMode} t={t} settings={settings} />
       </div>
     );

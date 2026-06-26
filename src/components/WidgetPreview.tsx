@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Send, Bot, User, CornerDownRight, Sparkles, Copy, ThumbsUp, ThumbsDown, Brain, Settings } from 'lucide-react';
+import { Send, Bot, User, CornerDownRight, Sparkles, Copy, ThumbsUp, ThumbsDown, Brain, Settings, ChevronDown, ChevronUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Suggestion, AppSettings } from '../types';
 
@@ -7,7 +7,18 @@ export function WidgetUI({ darkMode, t, settings }: { darkMode: boolean, t: any,
   const [loading, setLoading] = useState(false);
   const [input, setInput] = useState('');
   const [chatHistory, setChatHistory] = useState<{ role: 'ai' | 'user', text: string, suggestions?: Suggestion[] }[]>([]);
+  const [isCollapsed, setIsCollapsed] = useState(true);
   const hasRequestedInit = React.useRef(false);
+
+  // Send resize event to parent window when collapsed state changes
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.parent) {
+      window.parent.postMessage({
+        type: 'OMNIDESK_RESIZE_WIDGET',
+        isCollapsed: isCollapsed
+      }, '*');
+    }
+  }, [isCollapsed]);
 
   const [caseNumber] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -89,13 +100,13 @@ export function WidgetUI({ darkMode, t, settings }: { darkMode: boolean, t: any,
   }, []);
 
   return (
-    <div className={`h-[calc(100vh-2rem)] p-6 rounded-[2rem] border transition-all flex flex-col ${darkMode ? 'border-indigo-500/30 bg-indigo-500/5 backdrop-blur-xl' : 'border-indigo-100 bg-white shadow-2xl shadow-indigo-500/10'}`}>
-        <div className="flex items-center justify-between mb-6 shrink-0">
+    <div className={`${isCollapsed ? 'h-auto pb-6' : 'h-[calc(100vh-2rem)]'} p-6 rounded-[2rem] border transition-all flex flex-col ${darkMode ? 'border-indigo-500/30 bg-slate-900 shadow-2xl' : 'border-indigo-100 bg-white shadow-2xl shadow-indigo-500/10'}`}>
+        <div className={`flex items-center justify-between shrink-0 ${isCollapsed ? '' : 'mb-6'}`}>
           <div className="flex items-center gap-3">
-             <div className="w-10 h-10 rounded-xl bg-indigo-500 flex items-center justify-center shadow-lg shadow-indigo-500/40">
+             <div className="w-10 h-10 rounded-xl bg-indigo-500 flex items-center justify-center shadow-lg shadow-indigo-500/40 cursor-pointer" onClick={() => setIsCollapsed(!isCollapsed)}>
                 <Brain className="w-5 h-5 text-white" />
              </div>
-             <div>
+             <div className="cursor-pointer select-none" onClick={() => setIsCollapsed(!isCollapsed)}>
                 <h3 className={`font-black text-lg italic tracking-tight leading-none ${darkMode ? 'text-white' : 'text-slate-900'}`}>{t.ai_assistant}</h3>
                 <div className="flex items-center gap-2 mt-1.5">
                    <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
@@ -103,12 +114,19 @@ export function WidgetUI({ darkMode, t, settings }: { darkMode: boolean, t: any,
                 </div>
              </div>
           </div>
-          <a href="/" target="_blank" rel="noopener noreferrer" className={`p-2.5 rounded-xl border transition-colors inline-flex ${darkMode ? 'border-white/10 hover:bg-white/5 text-slate-400' : 'border-slate-100 hover:bg-slate-50 text-slate-500'}`}>
-             <Settings className="w-4 h-4" />
-          </a>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setIsCollapsed(!isCollapsed)} className={`p-2.5 rounded-xl border transition-colors inline-flex ${darkMode ? 'border-white/10 hover:bg-white/5 text-slate-400' : 'border-slate-100 hover:bg-slate-50 text-slate-500'}`}>
+               {isCollapsed ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            </button>
+            <a href="/" target="_blank" rel="noopener noreferrer" className={`p-2.5 rounded-xl border transition-colors inline-flex ${darkMode ? 'border-white/10 hover:bg-white/5 text-slate-400' : 'border-slate-100 hover:bg-slate-50 text-slate-500'}`}>
+               <Settings className="w-4 h-4" />
+            </a>
+          </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-6 mb-6">
+        {!isCollapsed && (
+          <>
+            <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-6 mb-6">
           <AnimatePresence>
             {chatHistory.map((msg, i) => (
               <motion.div 
@@ -212,6 +230,8 @@ export function WidgetUI({ darkMode, t, settings }: { darkMode: boolean, t: any,
             </button>
           </div>
         </div>
+        </>
+        )}
     </div>
   );
 }
