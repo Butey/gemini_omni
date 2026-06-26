@@ -12,6 +12,9 @@ RUN npm install
 # Copy source code
 COPY . .
 
+# Set memory limit for the build process to prevent OOM on small VPS
+ENV NODE_OPTIONS="--max-old-space-size=1024"
+
 # Build the application
 RUN npm run build
 

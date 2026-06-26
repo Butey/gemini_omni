@@ -191,7 +191,8 @@ app.post("/api/chat", async (req, res) => {
         const searchRes = await fetch(`${settings.bookstack_url.replace(/\/$/, '')}/api/search?query=${searchQuery}&count=3`, {
           headers: {
             'Authorization': `Token ${settings.bookstack_token_id}:${settings.bookstack_token_secret}`
-          }
+          },
+          signal: AbortSignal.timeout(10000)
         });
         
         if (searchRes.ok) {
@@ -202,7 +203,8 @@ app.post("/api/chat", async (req, res) => {
             const pageRes = await fetch(`${settings.bookstack_url.replace(/\/$/, '')}/api/pages/${page.id}`, {
               headers: {
                 'Authorization': `Token ${settings.bookstack_token_id}:${settings.bookstack_token_secret}`
-              }
+              },
+              signal: AbortSignal.timeout(10000)
             });
             if (pageRes.ok) {
               const pageData = await pageRes.json();
@@ -235,13 +237,17 @@ app.post("/api/chat", async (req, res) => {
       Latest User Query: "${userQuery || 'Analyze the ticket and provide suggestions.'}"
       
       Instructions: 
-      You are an AI assistant helping a customer support agent. 
-      Respond directly to the "Latest User Query" taking into account the "Chat History" and "Ticket Context". 
-      Your response should be placed in the "reply" field. 
-      If appropriate, provide up to 3 diverse specific text suggestions the agent can directly apply as a reply to the customer.
+      You are a versatile, helpful AI assistant for a customer support agent. 
+      Maintain a free-flowing, natural dialogue with the agent on ANY topic they bring up. 
+      DO NOT refuse to answer questions outside of technical support. If the agent asks about general topics (like the weather, math, etc.), answer them naturally.
+      When the query relates to the ticket or knowledge base, use the provided context to assist them.
+      Always respond directly to the "Latest User Query" taking into account the "Chat History" and context.
+      Your conversational response to the agent MUST be placed in the "reply" field. 
+      ONLY if the agent asks for a draft to send to the customer, OR if providing a draft would be highly relevant and helpful, you can include up to 3 drafts in the "suggestions" array.
       
       Output ONLY valid JSON in the exact format: 
       { "reply": "Your conversational response to the agent here", "suggestions": [{ "title": "Short title", "text": "Draft reply to customer", "type": "Draft" }] }
+      (Return an empty array [] for "suggestions" if no drafts are needed).
     `;
 
     let isCustom = false;
@@ -273,7 +279,8 @@ app.post("/api/chat", async (req, res) => {
             model: customModelConfig.model_id,
             messages: [{ role: 'user', content: prompt }],
             response_format: { type: 'json_object' }
-          })
+          }),
+          signal: AbortSignal.timeout(60000)
         });
         if (!resOpenAI.ok) {
            const errBody = await resOpenAI.text();
@@ -314,7 +321,20 @@ app.post("/api/chat", async (req, res) => {
        throw apiError;
     }
 
-    const data = JSON.parse(responseText || '{}');
+    let data;
+    try {
+      let cleanText = (responseText || '{}').trim();
+      if (cleanText.startsWith('```json')) cleanText = cleanText.substring(7);
+      else if (cleanText.startsWith('```')) cleanText = cleanText.substring(3);
+      if (cleanText.endsWith('```')) cleanText = cleanText.slice(0, -3);
+      data = JSON.parse(cleanText.trim() || '{}');
+    } catch (parseError) {
+      console.error('Failed to parse LLM response as JSON:', responseText);
+      data = {
+        reply: responseText,
+        suggestions: []
+      };
+    }
 
     res.json({ 
       reply: data.reply || "I analyzed the context.",
