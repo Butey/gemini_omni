@@ -6,6 +6,9 @@ import dotenv from "dotenv";
 import fs from "fs";
 import { AppSettings, AnalyticsRecord, KnowledgeBaseItem } from "./src/types";
 
+if (fs.existsSync(path.join(process.cwd(), '.env.local'))) {
+  dotenv.config({ path: path.join(process.cwd(), '.env.local') });
+}
 dotenv.config();
 
 const app = express();
@@ -40,8 +43,9 @@ if (!fs.existsSync(STORAGE_DIR)) {
 let settings: AppSettings = {
   llm_endpoint: "gemini",
   model_name: "gemini-3.5-flash",
+  custom_models: "",
   api_key: process.env.GEMINI_API_KEY || "",
-  system_prompt: "You are a helpful technical support assistant for Omnidesk. Use the provided context to answer user queries accurately and professionally.",
+  system_prompt: "You are a helpful technical support assistant for our internal tool and BookStack. Use the provided context to answer user queries accurately and professionally. Всегда отвечай на русском языке, если только клиент не пишет на другом языке или нет прямого запроса на перевод.",
   temperature: 0.7,
   top_p: 0.95,
   max_tokens: 2048,
@@ -91,7 +95,7 @@ let settings: AppSettings = {
 
 let analyticsLogs: AnalyticsRecord[] = [];
 let knowledgeBase: KnowledgeBaseItem[] = [
-  { id: '1', title: 'Omnidesk Integration', content: 'Omnidesk can be integrated via webhooks and custom widgets.', tags: ['integration', 'omnidesk'] },
+  { id: '1', title: 'BookStack Integration', content: 'BookStack can be integrated via webhooks and custom widgets.', tags: ['integration', 'bookstack'] },
   { id: '2', title: 'Resetting Password', content: 'To reset the password, go to settings and click on "Forgot Password".', tags: ['account', 'security'] }
 ];
 
@@ -122,7 +126,7 @@ loadData();
 
 // Gemini Initialization
 let ai = new GoogleGenAI({
-  apiKey: settings.api_key || process.env.GEMINI_API_KEY || "",
+  apiKey: settings.api_key || process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || "",
   httpOptions: {
     headers: {
       'User-Agent': 'aistudio-build',
@@ -213,15 +217,77 @@ app.post("/api/chat", async (req, res) => {
       { "reply": "Your conversational response to the agent here", "suggestions": [{ "title": "Short title", "text": "Draft reply to customer", "type": "Draft" }] }
     `;
 
-    const response = await ai.models.generateContent({
-      model: settings.model_name,
-      contents: prompt,
-      config: {
-        responseMimeType: 'application/json',
-      }
-    });
+    let isCustom = false;
+    let customModelConfig: any = null;
+    if (settings.custom_models && settings.custom_models.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(settings.custom_models);
+        customModelConfig = parsed.find((m: any) => m.model_id === settings.model_name);
+        if (customModelConfig) isCustom = true;
+      } catch (e) {}
+    }
 
-    const data = JSON.parse(response.text || '{}');
+    const currentApiKey = isCustom && customModelConfig.api_key ? customModelConfig.api_key : (settings.api_key || process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || "");
+    if (!currentApiKey || currentApiKey.trim() === "") {
+      return res.status(400).json({ error: "API key is not configured. Please set it in the Settings panel or in your environment variables." });
+    }
+
+    let responseText = '{}';
+    try {
+      if (isCustom && customModelConfig) {
+        const endpoint = customModelConfig.base_url.replace(/\/$/, '') + '/chat/completions';
+        const resOpenAI = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${currentApiKey}`
+          },
+          body: JSON.stringify({
+            model: customModelConfig.model_id,
+            messages: [{ role: 'user', content: prompt }],
+            response_format: { type: 'json_object' }
+          })
+        });
+        if (!resOpenAI.ok) {
+           const errBody = await resOpenAI.text();
+           throw new Error(`OpenAI-compatible API Error: ${resOpenAI.status} - ${errBody}`);
+        }
+        const dataOpenAI = await resOpenAI.json();
+        responseText = dataOpenAI.choices?.[0]?.message?.content || '{}';
+      } else {
+        let response;
+        try {
+          response = await ai.models.generateContent({
+            model: settings.model_name,
+            contents: prompt,
+            config: {
+              responseMimeType: 'application/json',
+            }
+          });
+        } catch (apiError: any) {
+          if (apiError.message && (apiError.message.includes("API Key not found") || apiError.message.includes("API key not valid"))) {
+            throw new Error("The Gemini API key currently configured is invalid or has been revoked. Please check your AI Studio Secrets or the Settings panel and provide a new, valid API key.");
+          }
+          if (apiError.message && (apiError.message.includes("high demand") || apiError.message.includes("quota") || apiError.message.includes("429")) && settings.model_name === 'gemini-3.5-flash') {
+            console.log("gemini-3.5-flash is experiencing high demand or quota limits. Falling back to gemini-2.5-flash...");
+            response = await ai.models.generateContent({
+              model: 'gemini-2.5-flash',
+              contents: prompt,
+              config: {
+                responseMimeType: 'application/json',
+              }
+            });
+          } else {
+            throw apiError;
+          }
+        }
+        responseText = response.text || '{}';
+      }
+    } catch (apiError: any) {
+       throw apiError;
+    }
+
+    const data = JSON.parse(responseText || '{}');
 
     res.json({ 
       reply: data.reply || "I analyzed the context.",
@@ -344,15 +410,26 @@ app.get("/api/omnidesk/widget.js", (req, res) => {
 
 // Settings API
 app.get("/api/settings", (req, res) => {
-  res.json(settings);
+  res.json({
+    ...settings,
+    api_key: settings.api_key || process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || ""
+  });
 });
 
 app.post("/api/settings", (req, res) => {
-  const previousApiKey = settings.api_key;
+  const previousEffectiveKey = settings.api_key || process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || "";
+  
   settings = { ...settings, ...req.body };
-  if (settings.api_key !== previousApiKey || !ai) {
+  
+  if (settings.api_key === process.env.GEMINI_API_KEY || settings.api_key === process.env.VITE_GEMINI_API_KEY) {
+    settings.api_key = "";
+  }
+  
+  const effectiveKey = settings.api_key || process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || "";
+
+  if (effectiveKey !== previousEffectiveKey || !ai) {
     ai = new GoogleGenAI({
-      apiKey: settings.api_key || process.env.GEMINI_API_KEY || "",
+      apiKey: effectiveKey,
       httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
     });
   }

@@ -141,6 +141,54 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-4">
+            {settings && (
+              <div className={`relative flex items-center`}>
+                <select 
+                  value={settings.model_name}
+                  onChange={async (e) => {
+                    const newModel = e.target.value;
+                    const updated = { ...settings, model_name: newModel };
+                    setSettings(updated);
+                    await fetch('/api/settings', {
+                      method: 'PUT',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(updated)
+                    });
+                  }}
+                  className={`pl-4 pr-8 py-2 rounded-xl border appearance-none transition-all font-bold text-[11px] outline-none cursor-pointer ${darkMode ? 'bg-white/5 border-white/10 text-slate-200 hover:bg-white/10' : 'bg-white border-slate-200 shadow-sm text-slate-600 hover:bg-slate-50'}`}
+                >
+                  <option value="gemini-3.5-flash" className={darkMode ? 'bg-zinc-900' : 'bg-white'}>Gemini 3.5 Flash</option>
+                  <option value="gemini-3.1-flash-lite" className={darkMode ? 'bg-zinc-900' : 'bg-white'}>Gemini 3.1 Flash Lite</option>
+                  <option value="gemini-2.5-flash" className={darkMode ? 'bg-zinc-900' : 'bg-white'}>Gemini 2.5 Flash</option>
+                  <option value="gemini-3.0-flash" className={darkMode ? 'bg-zinc-900' : 'bg-white'}>Gemini 3 Flash</option>
+                  <option value="gemma-4-26b" className={darkMode ? 'bg-zinc-900' : 'bg-white'}>Gemma 4 26B</option>
+                  {(() => {
+                     let customOptions: any[] = [];
+                     try {
+                       if (settings.custom_models && settings.custom_models.startsWith('[')) {
+                         const parsed = JSON.parse(settings.custom_models);
+                         customOptions = parsed.map((m: any) => ({ label: m.name, value: m.model_id }));
+                       } else if (settings.custom_models) {
+                         customOptions = settings.custom_models.split(',').map(m => m.trim()).filter(Boolean).map(m => ({ label: m, value: m }));
+                       }
+                     } catch (e) {}
+                     
+                     const isCurrentCustom = customOptions.some(o => o.value === settings.model_name);
+                     const isCurrentBuiltin = ['gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-2.5-flash', 'gemini-3.0-flash', 'gemma-4-26b'].includes(settings.model_name);
+                     
+                     return (
+                       <>
+                         {customOptions.map(opt => <option key={opt.value} value={opt.value} className={darkMode ? "bg-zinc-900" : "bg-white"}>{opt.label}</option>)}
+                         {settings.model_name && !isCurrentBuiltin && !isCurrentCustom && (
+                           <option value={settings.model_name} className={darkMode ? "bg-zinc-900" : "bg-white"}>{settings.model_name}</option>
+                         )}
+                       </>
+                     );
+                  })()}
+                </select>
+                <ChevronRight className="w-3.5 h-3.5 absolute right-3 pointer-events-none opacity-50 rotate-90" />
+              </div>
+            )}
             <div className={`flex ${darkMode ? 'bg-white/5 border-white/10' : 'bg-slate-100 border-slate-200'} p-1 rounded-xl border transition-all`}>
               <button 
                 onClick={() => setLanguage('ru')}

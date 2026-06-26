@@ -21,9 +21,11 @@ import {
   ToggleLeft,
   ToggleRight,
   CheckCircle2,
-  XCircle
+  XCircle,
+  Sliders
 } from 'lucide-react';
 import { AppSettings } from '../types';
+import CustomModelsModal from './CustomModelsModal';
 
 export default function AdminPanel({ 
   darkMode, 
@@ -37,6 +39,7 @@ export default function AdminPanel({
   t: any
 }) {
   const [localSettings, setLocalSettings] = useState<AppSettings | null>(settings);
+  const [showCustomModelsModal, setShowCustomModelsModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState<string | null>(null);
   const [repoSkillsModal, setRepoSkillsModal] = useState<{ owner: string, repo: string, branch: string, files: any[] } | null>(null);
@@ -227,7 +230,8 @@ export default function AdminPanel({
   const sections = [
     { title: t.core_config, icon: Cpu, fields: [
       { key: 'llm_endpoint', label: 'LLM Endpoint', type: 'text', help: t.desc_llm_endpoint },
-      { key: 'model_name', label: 'Model Name', type: 'text', help: t.desc_model_name },
+      { key: 'model_name', label: 'Model Name', type: 'select', options: ['gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-2.5-flash', 'gemini-3.0-flash', 'gemma-4-26b'], help: t.desc_model_name },
+      { key: 'custom_models', label: t.custom_models || 'Custom Models', type: 'custom_models_manager', help: t.desc_custom_models },
       { key: 'api_key', label: 'API Key', type: 'text', help: t.desc_api_key },
       { key: 'system_prompt', label: 'Global Instructions', type: 'textarea', help: t.desc_prompt },
     ]},
@@ -393,6 +397,14 @@ export default function AdminPanel({
                         </div>
                       )}
                     </div>
+                  ) : field.type === 'custom_models_manager' ? (
+                    <button 
+                      onClick={() => setShowCustomModelsModal(true)}
+                      className={`w-full p-5 rounded-2xl border transition-all font-black text-xs text-center flex items-center justify-center gap-2 ${darkMode ? 'bg-indigo-500/10 border-indigo-500/20 text-indigo-400 hover:bg-indigo-500/20' : 'bg-indigo-50 border-indigo-200 text-indigo-600 hover:bg-indigo-100'}`}
+                    >
+                      <Sliders className="w-4 h-4" />
+                      Manage Custom Models
+                    </button>
                   ) : field.type === 'select' ? (
                     <div className="relative">
                       <select 
@@ -401,6 +413,29 @@ export default function AdminPanel({
                         className={`w-full p-5 rounded-2xl border transition-all font-black text-xs appearance-none cursor-pointer outline-none focus:border-indigo-500/50 ${darkMode ? 'bg-black/40 border-white/10 text-slate-200' : 'bg-slate-50 border-slate-100 text-slate-900'}`}
                       >
                         {field.options?.map(opt => <option key={opt} value={opt} className={darkMode ? "bg-zinc-900" : "bg-white"}>{opt.toUpperCase()}</option>)}
+                        {field.key === 'model_name' && (() => {
+                           let customOptions: any[] = [];
+                           try {
+                             if (localSettings.custom_models && localSettings.custom_models.startsWith('[')) {
+                               const parsed = JSON.parse(localSettings.custom_models);
+                               customOptions = parsed.map((m: any) => ({ label: m.name, value: m.model_id }));
+                             } else if (localSettings.custom_models) {
+                               customOptions = localSettings.custom_models.split(',').map(m => m.trim()).filter(Boolean).map(m => ({ label: m, value: m }));
+                             }
+                           } catch (e) {}
+                           
+                           const isCurrentCustom = customOptions.some(o => o.value === localSettings.model_name);
+                           const isCurrentBuiltin = field.options?.includes(localSettings.model_name);
+                           
+                           return (
+                             <>
+                               {customOptions.map(opt => <option key={opt.value} value={opt.value} className={darkMode ? "bg-zinc-900" : "bg-white"}>{opt.label.toUpperCase()}</option>)}
+                               {localSettings.model_name && !isCurrentBuiltin && !isCurrentCustom && (
+                                 <option value={localSettings.model_name} className={darkMode ? "bg-zinc-900" : "bg-white"}>{localSettings.model_name.toUpperCase()}</option>
+                               )}
+                             </>
+                           );
+                        })()}
                       </select>
                       <div className="absolute right-5 top-1/2 -translate-y-1/2 pointer-events-none opacity-50">
                          <Monitor className="w-4 h-4" />
@@ -502,6 +537,14 @@ export default function AdminPanel({
           </div>
         </div>
       )}
+      
+      <CustomModelsModal 
+        isOpen={showCustomModelsModal} 
+        onClose={() => setShowCustomModelsModal(false)}
+        customModelsJson={localSettings.custom_models}
+        darkMode={darkMode}
+        onSave={(json) => setLocalSettings({ ...localSettings, custom_models: json })}
+      />
     </div>
   );
 }

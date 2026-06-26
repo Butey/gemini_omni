@@ -37,9 +37,18 @@ export interface KnowledgeBaseItem {
   tags: string[];
 }
 
+export interface CustomModelConfig {
+  id: string;
+  name: string;
+  base_url: string;
+  model_id: string;
+  api_key: string;
+}
+
 export interface AppSettings {
   llm_endpoint: string;
   model_name: string;
+  custom_models?: string;
   api_key: string;
   system_prompt: string;
   temperature: number;

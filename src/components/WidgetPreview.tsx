@@ -7,6 +7,7 @@ export function WidgetUI({ darkMode, t, settings }: { darkMode: boolean, t: any,
   const [loading, setLoading] = useState(false);
   const [input, setInput] = useState('');
   const [chatHistory, setChatHistory] = useState<{ role: 'ai' | 'user', text: string, suggestions?: Suggestion[] }[]>([]);
+  const hasRequestedInit = React.useRef(false);
 
   // Messaging Bridge: Send content to Omnidesk Parent
   const applyDraft = (text: string) => {
@@ -20,7 +21,7 @@ export function WidgetUI({ darkMode, t, settings }: { darkMode: boolean, t: any,
       const btn = document.activeElement as HTMLElement;
       if (btn) {
         const originalText = btn.innerText;
-        btn.innerText = t.language === 'ru' ? 'Применено!' : 'Applied!';
+        btn.innerText = 'Применено!';
         setTimeout(() => { btn.innerText = originalText; }, 2000);
       }
     }
@@ -57,7 +58,7 @@ export function WidgetUI({ darkMode, t, settings }: { darkMode: boolean, t: any,
 
       setChatHistory(prev => [...prev, { 
         role: 'ai', 
-        text: data.reply || (t.language === 'ru' ? 'Вот мои рекомендации по этому тикету:' : 'Here are my recommendations for this ticket:'),
+        text: data.reply || 'Вот мои рекомендации по этому тикету:',
         suggestions: data.suggestions || []
       }]);
     } catch (error: any) {
@@ -73,8 +74,9 @@ export function WidgetUI({ darkMode, t, settings }: { darkMode: boolean, t: any,
 
   useEffect(() => {
     // Initial greeting/analysis
-    if (chatHistory.length === 0) {
-      handleSend(t.language === 'ru' ? 'Проанализируй этот тикет' : 'Analyze this ticket');
+    if (chatHistory.length === 0 && !hasRequestedInit.current) {
+      hasRequestedInit.current = true;
+      handleSend('Проанализируй этот тикет');
     }
   }, []);
 
@@ -131,7 +133,7 @@ export function WidgetUI({ darkMode, t, settings }: { darkMode: boolean, t: any,
                            onClick={() => applyDraft(s.text)}
                            className="w-full py-2.5 bg-indigo-600/10 hover:bg-indigo-600 hover:text-white border border-indigo-500/20 text-indigo-500 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all"
                          >
-                           {t.language === 'ru' ? 'Вставить в ответ' : 'Insert into Response'}
+                           {'Вставить в ответ'}
                          </button>
                       </div>
                     ))}
@@ -164,7 +166,7 @@ export function WidgetUI({ darkMode, t, settings }: { darkMode: boolean, t: any,
                  ]).map((action: any, i: number) => (
                     <button 
                       key={i}
-                      onClick={() => handleSend(action.prompt || (t.language === 'ru' ? action.ru : action.en))}
+                      onClick={() => handleSend(action.prompt || (action.ru))}
                       className={`flex items-center gap-1.5 whitespace-nowrap px-3 py-1.5 rounded-lg border text-xs font-bold transition-colors ${
                         darkMode 
                           ? 'bg-white/5 border-white/10 hover:bg-white/10 text-slate-300' 
@@ -172,7 +174,7 @@ export function WidgetUI({ darkMode, t, settings }: { darkMode: boolean, t: any,
                       }`}
                     >
                       <span>{action.icon}</span>
-                      {t.language === 'ru' ? action.ru : action.en}
+                      {action.ru}
                     </button>
                  ));
                } catch (e) {
@@ -186,7 +188,7 @@ export function WidgetUI({ darkMode, t, settings }: { darkMode: boolean, t: any,
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-              placeholder={t.language === 'ru' ? 'Спросить ИИ...' : 'Ask AI...'}
+              placeholder={'Спросить ИИ...'}
               className={`w-full p-5 pr-14 rounded-2xl border outline-none transition-all font-bold text-sm ${
                 darkMode 
                   ? 'bg-black/40 border-white/10 focus:border-indigo-500/50 text-white placeholder:text-slate-600' 
@@ -208,9 +210,9 @@ export function WidgetUI({ darkMode, t, settings }: { darkMode: boolean, t: any,
 
 export default function WidgetPreview({ darkMode, t, settings }: { darkMode: boolean, t: any, settings?: AppSettings | null }) {
   const [messages, setMessages] = useState([
-    { role: 'user', text: t.language === 'ru' ? 'Здравствуйте! Пытаюсь войти в свой аккаунт, но кнопка "Войти" не нажимается. Пробовал в разных браузерах.' : 'Hello! I am trying to log in but the "Login" button is not responding. I have tried multiple browsers.' },
-    { role: 'agent', text: t.language === 'ru' ? 'Добрый день! Пожалуйста, очистите кэш вашего браузера и попробуйте еще раз.' : 'Good day! Please clear your browser cache and try again.' },
-    { role: 'user', text: t.language === 'ru' ? 'Кэш очистил, проблема осталась. Также не вижу ссылку на сброс пароля.' : "Cleared the cache, but the problem persists. Also, I don't see the reset password link." },
+    { role: 'user', text: 'Здравствуйте! Пытаюсь войти в свой аккаунт, но кнопка "Войти" не нажимается. Пробовал в разных браузерах.' },
+    { role: 'agent', text: 'Добрый день! Пожалуйста, очистите кэш вашего браузера и попробуйте еще раз.' },
+    { role: 'user', text: 'Кэш очистил, проблема осталась. Также не вижу ссылку на сброс пароля.' },
   ]);
   const [loading, setLoading] = useState(false);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
@@ -252,7 +254,7 @@ export default function WidgetPreview({ darkMode, t, settings }: { darkMode: boo
             </div>
             <div>
                <h3 className={`font-black text-2xl italic tracking-tight ${darkMode ? 'text-white' : 'text-slate-900'}`}>
-                 {t.language === 'ru' ? 'Проблема с кнопкой входа' : 'Login Button Unresponsive'}
+                 {'Проблема с кнопкой входа'}
                </h3>
                <div className="flex flex-wrap items-center gap-3 mt-1.5">
                   <span className="text-[10px] font-black uppercase text-slate-500 tracking-[0.2em]">Ticket #4820</span>
@@ -292,7 +294,7 @@ export default function WidgetPreview({ darkMode, t, settings }: { darkMode: boo
              <div className="flex gap-4">
                 <textarea 
                   className={`flex-1 bg-transparent border-none outline-none resize-none text-sm leading-relaxed font-bold ${darkMode ? 'text-slate-300 placeholder:text-slate-600' : 'text-slate-900 placeholder:text-slate-400'}`}
-                  placeholder={t.language === 'ru' ? 'Напишите сообщение клиенту...' : 'Write message to customer...'}
+                  placeholder={'Напишите сообщение клиенту...'}
                   rows={2}
                 />
                 <div className="flex flex-col gap-2">
