@@ -557,22 +557,6 @@ app.get("/api/omnidesk/widget.js", (req, res) => {
   });
 
 })();
-\`;
-  res.setHeader('Content-Type', 'application/javascript');
-  res.send(jsContent);
-});    iframe.style.width = '100%';
-               iframe.style.height = '100%';
-               iframe.style.border = 'none';
-               
-               container.appendChild(iframe);
-               bodyTarget.appendChild(container);
-           }
-        }
-        clearInterval(interval);
-      }
-    }, 500);
-  }
-})();
 `;
   res.setHeader('Content-Type', 'application/javascript');
   res.send(jsContent);
