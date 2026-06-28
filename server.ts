@@ -478,12 +478,9 @@ app.get("/api/omnidesk/widget.js", (req, res) => {
       
       container.appendChild(iframe);
       
-      // Insert after the target if possible
-      if (renderTarget.parentNode) {
-          renderTarget.parentNode.insertBefore(container, renderTarget.nextSibling);
-      } else {
-          renderTarget.appendChild(container);
-      }
+      // Append inside the target container at the bottom
+      renderTarget.appendChild(container);
+      
       return true;
     }
     
