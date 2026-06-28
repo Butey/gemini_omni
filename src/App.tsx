@@ -21,7 +21,6 @@ import {
   ChevronRight,
   Plus
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
 import Dashboard from './components/Dashboard';
 import KnowledgeBase from './components/KnowledgeBase';
 import AdminPanel from './components/AdminPanel';
@@ -290,23 +289,14 @@ export default function App() {
             </>
           )}
           
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={activeTab + language + darkMode}
-              initial={{ opacity: 0, scale: 0.98 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 1.02 }}
-              transition={{ duration: 0.4 }}
-              className="relative z-10 h-full"
-            >
-              {activeTab === 'dashboard' && <Dashboard darkMode={darkMode} t={t} />}
-              {activeTab === 'analytics' && <Analytics darkMode={darkMode} t={t} />}
-              {activeTab === 'kb' && <KnowledgeBase darkMode={darkMode} t={t} />}
-              {activeTab === 'admin' && <AdminPanel darkMode={darkMode} settings={settings} onUpdate={setSettings} t={t} />}
-              {activeTab === 'integration' && <IntegrationGuide darkMode={darkMode} t={t} />}
-              {activeTab === 'widget' && <WidgetPreview darkMode={darkMode} t={t} settings={settings} />}
-            </motion.div>
-          </AnimatePresence>
+          <div key={activeTab + language + darkMode} className="relative z-10 h-full animate-in fade-in zoom-in-95 duration-300">
+            {activeTab === 'dashboard' && <Dashboard darkMode={darkMode} t={t} />}
+            {activeTab === 'analytics' && <Analytics darkMode={darkMode} t={t} />}
+            {activeTab === 'kb' && <KnowledgeBase darkMode={darkMode} t={t} />}
+            {activeTab === 'admin' && <AdminPanel darkMode={darkMode} settings={settings} onUpdate={setSettings} t={t} />}
+            {activeTab === 'integration' && <IntegrationGuide darkMode={darkMode} t={t} />}
+            {activeTab === 'widget' && <WidgetPreview darkMode={darkMode} t={t} settings={settings} />}
+          </div>
         </div>
       </main>
     </div>

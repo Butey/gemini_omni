@@ -1,6 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Plus, Trash2, GripVertical, Smile } from 'lucide-react';
-import Picker, { Theme } from 'emoji-picker-react';
+import React, { useState, useEffect } from 'react';
+import { Plus, Trash2, Smile } from 'lucide-react';
 
 interface QuickAction {
   icon: string;
@@ -19,8 +18,6 @@ export default function QuickActionsEditor({
   darkMode: boolean;
 }) {
   const [actions, setActions] = useState<QuickAction[]>([]);
-  const [showPicker, setShowPicker] = useState<number | null>(null);
-  const pickerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     try {
@@ -33,16 +30,6 @@ export default function QuickActionsEditor({
       setActions([]);
     }
   }, [value]);
-
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (pickerRef.current && !pickerRef.current.contains(event.target as Node)) {
-        setShowPicker(null);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
 
   const updateActions = (newActions: QuickAction[]) => {
     setActions(newActions);
@@ -84,27 +71,14 @@ export default function QuickActionsEditor({
         <div key={index} className={`flex flex-col gap-2 p-3 rounded-xl border relative ${darkMode ? 'bg-white/5 border-white/10' : 'bg-white border-slate-200 shadow-sm'}`}>
           <div className="flex items-center gap-2">
             <div className="relative">
-              <button
-                type="button"
-                onClick={() => setShowPicker(showPicker === index ? null : index)}
-                className={`w-10 h-10 flex items-center justify-center rounded-lg border text-lg focus:border-indigo-500/50 outline-none transition-colors ${darkMode ? 'bg-black/40 border-white/10 hover:bg-white/10' : 'bg-slate-50 border-slate-200 hover:bg-slate-100'}`}
-              >
-                {action.icon || <Smile className="w-5 h-5 opacity-50" />}
-              </button>
-              
-              {showPicker === index && (
-                <div ref={pickerRef} className="absolute top-12 left-0 z-50 shadow-2xl">
-                  <Picker 
-                    theme={darkMode ? Theme.DARK : Theme.LIGHT}
-                    onEmojiClick={(emojiData) => {
-                      handleChange(index, 'icon', emojiData.emoji);
-                      setShowPicker(null);
-                    }}
-                    width={300}
-                    height={400}
-                  />
-                </div>
-              )}
+              <input
+                type="text"
+                maxLength={2}
+                value={action.icon}
+                onChange={(e) => handleChange(index, 'icon', e.target.value)}
+                placeholder="😀"
+                className={`w-10 h-10 flex text-center items-center justify-center rounded-lg border text-lg focus:border-indigo-500/50 outline-none transition-colors ${darkMode ? 'bg-black/40 border-white/10 hover:bg-white/10 text-white' : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-900'}`}
+              />
             </div>
             <input
               type="text"
