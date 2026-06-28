@@ -1,4 +1,15 @@
 import React, { useState, useEffect } from 'react';
+import { 
+  BarChart, 
+  Bar, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  ResponsiveContainer,
+  AreaChart,
+  Area
+} from 'recharts';
 import { TrendingUp, Users, CheckCircle, Clock, Info } from 'lucide-react';
 import { apiFetch } from '../lib/api';
 
@@ -67,8 +78,6 @@ export default function Dashboard({ darkMode, t }: { darkMode: boolean, t: any }
     return <div className="p-10 text-center">Loading analytics...</div>;
   }
 
-  const maxQueries = Math.max(...chartData.map(d => d.queries), 1);
-
   return (
     <div className="space-y-10">
       {/* Informational Notice */}
@@ -104,27 +113,57 @@ export default function Dashboard({ darkMode, t }: { darkMode: boolean, t: any }
       </div>
 
       {/* Main Charts */}
-      <div className="grid grid-cols-1 gap-10">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+        <div className={`p-10 rounded-[2.5rem] border ${darkMode ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-white shadow-2xl shadow-slate-200/50'} backdrop-blur-md transition-all`}>
+          <h3 className={`text-[11px] font-black mb-12 uppercase tracking-[0.3em] ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{t.language === 'ru' ? 'Запросы к ИИ' : 'AI Queries'}</h3>
+          <div className="h-80 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={chartData}>
+                <defs>
+                  <linearGradient id="colorQueries" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#6366f1" stopOpacity={darkMode ? 0.3 : 0.1}/>
+                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={darkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.03)"} />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10, fontWeight: 'bold'}} />
+                <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10, fontWeight: 'bold'}} />
+                <Tooltip 
+                  contentStyle={{ 
+                    backgroundColor: darkMode ? 'rgba(9, 9, 11, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+                    border: darkMode ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(0, 0, 0, 0.05)',
+                    borderRadius: '24px',
+                    backdropFilter: 'blur(20px)',
+                    boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)'
+                  }}
+                  itemStyle={{ color: darkMode ? '#fff' : '#0f172a', fontSize: '12px', fontWeight: 'bold' }}
+                />
+                <Area type="monotone" dataKey="queries" name="Queries" stroke="#6366f1" fillOpacity={1} fill="url(#colorQueries)" strokeWidth={5} dot={{ r: 6, fill: '#6366f1', strokeWidth: 3, stroke: darkMode ? '#09090b' : '#fff' }} activeDot={{ r: 9, stroke: '#6366f1', strokeWidth: 3, fill: '#fff' }} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
         <div className={`p-10 rounded-[2.5rem] border ${darkMode ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-white shadow-2xl shadow-slate-200/50'} backdrop-blur-md transition-all`}>
           <h3 className={`text-[11px] font-black mb-12 uppercase tracking-[0.3em] ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{t.language === 'ru' ? 'Активность по дням' : 'Activity by Day'}</h3>
-          <div className="h-64 w-full flex items-end justify-between gap-2 pt-10">
-            {chartData.map((d, i) => {
-              const heightPercent = Math.max((d.queries / maxQueries) * 100, 2);
-              return (
-                <div key={i} className="flex flex-col items-center flex-1 h-full justify-end group">
-                  <div className="relative w-full flex justify-center h-full items-end">
-                    <div 
-                      className="w-full max-w-[40px] bg-indigo-500 rounded-t-lg transition-all duration-500 opacity-80 group-hover:opacity-100"
-                      style={{ height: `${heightPercent}%` }}
-                    ></div>
-                    <div className="absolute -top-8 opacity-0 group-hover:opacity-100 transition-opacity text-xs font-bold text-indigo-500 bg-indigo-50 px-2 py-1 rounded">
-                      {d.queries}
-                    </div>
-                  </div>
-                  <span className={`mt-4 text-[10px] font-bold uppercase ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{d.name}</span>
-                </div>
-              );
-            })}
+          <div className="h-80 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartData} barGap={12}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={darkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.03)"} />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10, fontWeight: 'bold'}} />
+                <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10, fontWeight: 'bold'}} />
+                <Tooltip 
+                   contentStyle={{ 
+                    backgroundColor: darkMode ? 'rgba(9, 9, 11, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+                    border: darkMode ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(0, 0, 0, 0.05)',
+                    borderRadius: '24px',
+                    backdropFilter: 'blur(20px)'
+                  }}
+                  itemStyle={{ color: darkMode ? '#fff' : '#0f172a', fontSize: '12px', fontWeight: 'bold' }}
+                />
+                <Bar dataKey="queries" name="Queries" fill="#6366f1" radius={[8, 8, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
           </div>
         </div>
       </div>
