@@ -438,124 +438,95 @@ app.get("/api/omnidesk/widget.js", (req, res) => {
   const widgetUrl = `${req.protocol}://${req.get('host')}/?mode=widget`;
   const jsContent = `
 (function() {
-  console.log('OmniAI Widget: Script loaded (Floating Mode)');
+  console.log('OmniAI Widget: Script loaded');
   
-  if (document.getElementById('omniai-floating-container')) {
-    return; // Already initialized
-  }
-
-  // Parse case number from Omnidesk URL
-  var caseNumber = '';
-  var matchUrl = document.location.href.match(/\\/(\\d+-\\d+)\\/?$/);
-  if (matchUrl) {
-    caseNumber = matchUrl[1];
-  } else if (typeof window.CurrentCaseNumber !== 'undefined') {
-    caseNumber = window.CurrentCaseNumber;
-  }
-  
-  var finalWidgetUrl = '${widgetUrl}' + (caseNumber ? '&case_number=' + caseNumber : '');
-
-  // Main container
-  var container = document.createElement('div');
-  container.id = 'omniai-floating-container';
-  container.style.position = 'fixed';
-  container.style.bottom = '30px';
-  container.style.right = '30px';
-  container.style.zIndex = '999999';
-  container.style.display = 'flex';
-  container.style.flexDirection = 'column';
-  container.style.alignItems = 'flex-end';
-  container.style.fontFamily = 'sans-serif';
-
-  // Iframe container (the chat window)
-  var iframeContainer = document.createElement('div');
-  iframeContainer.id = 'omniai-iframe-container';
-  iframeContainer.style.width = '400px';
-  iframeContainer.style.height = '650px';
-  iframeContainer.style.marginBottom = '20px';
-  iframeContainer.style.borderRadius = '16px';
-  iframeContainer.style.boxShadow = '0 10px 40px -10px rgba(0,0,0,0.3)';
-  iframeContainer.style.overflow = 'hidden';
-  iframeContainer.style.display = 'none';
-  iframeContainer.style.opacity = '0';
-  iframeContainer.style.transform = 'translateY(20px)';
-  iframeContainer.style.transition = 'all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1)';
-  iframeContainer.style.transformOrigin = 'bottom right';
-  iframeContainer.style.backgroundColor = '#fff';
-
-  var iframe = document.createElement('iframe');
-  iframe.src = finalWidgetUrl;
-  iframe.style.width = '100%';
-  iframe.style.height = '100%';
-  iframe.style.border = 'none';
-  iframeContainer.appendChild(iframe);
-
-  // Floating Action Button
-  var toggleBtn = document.createElement('button');
-  toggleBtn.id = 'omniai-toggle-btn';
-  toggleBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>';
-  toggleBtn.style.width = '64px';
-  toggleBtn.style.height = '64px';
-  toggleBtn.style.borderRadius = '32px';
-  toggleBtn.style.backgroundColor = '#4f46e5'; // indigo-600
-  toggleBtn.style.color = '#fff';
-  toggleBtn.style.border = 'none';
-  toggleBtn.style.cursor = 'pointer';
-  toggleBtn.style.boxShadow = '0 4px 16px rgba(79, 70, 229, 0.4)';
-  toggleBtn.style.display = 'flex';
-  toggleBtn.style.alignItems = 'center';
-  toggleBtn.style.justifyContent = 'center';
-  toggleBtn.style.transition = 'all 0.2s ease';
-  
-  toggleBtn.onmouseover = function() {
-    toggleBtn.style.transform = 'scale(1.05)';
-  };
-  toggleBtn.onmouseout = function() {
-    toggleBtn.style.transform = 'scale(1)';
-  };
-
-  toggleBtn.onclick = function() {
-    var isHidden = iframeContainer.style.display === 'none';
-    if (isHidden) {
-      iframeContainer.style.display = 'block';
-      // trigger reflow
-      void iframeContainer.offsetWidth;
-      iframeContainer.style.opacity = '1';
-      iframeContainer.style.transform = 'translateY(0)';
-      toggleBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
-      toggleBtn.style.backgroundColor = '#334155'; // slate-700
-    } else {
-      iframeContainer.style.opacity = '0';
-      iframeContainer.style.transform = 'translateY(20px)';
-      setTimeout(function() {
-        iframeContainer.style.display = 'none';
-      }, 300);
-      toggleBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>';
-      toggleBtn.style.backgroundColor = '#4f46e5'; // indigo-600
+  function initWidget() {
+    if (document.getElementById('omniai-widget-container')) {
+      return true; // Already initialized
     }
-  };
+    
+    // Try to find the ticket response area to inject below it
+    var renderTarget = document.getElementById('response_answer_area') ||
+                       document.querySelector('.request-area.request-answer-area') ||
+                       document.getElementById('reply_wrapper') ||
+                       document.querySelector('.reply-wrapper') ||
+                       document.getElementById('reply_block') ||
+                       document.getElementById('msg_form') ||
+                       document.querySelector('.msg-form') ||
+                       document.querySelector('#case_message_area') ||
+                       document.querySelector('.case-content');
+    
+    if (renderTarget) {
+      console.log('OmniAI Widget: Found target container, injecting iframe');
+      var container = document.createElement('div');
+      container.id = 'omniai-widget-container';
+      container.style.marginTop = '20px';
+      container.style.marginBottom = '40px';
+      container.style.width = '100%';
+      container.style.clear = 'both';
+      container.style.position = 'relative';
+      container.style.zIndex = '9999';
+      
+      var iframe = document.createElement('iframe');
+      iframe.src = '${widgetUrl}';
+      iframe.style.width = '100%';
+      iframe.style.height = '600px';
+      iframe.style.border = 'none';
+      iframe.style.display = 'block';
+      iframe.style.borderRadius = '12px';
+      iframe.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1)';
+      
+      container.appendChild(iframe);
+      
+      // Append inside the target container at the bottom
+      renderTarget.appendChild(container);
+      
+      return true;
+    }
+    
+    return false;
+  }
 
-  container.appendChild(iframeContainer);
-  container.appendChild(toggleBtn);
-  document.body.appendChild(container);
-
-  // Listen for messages from iframe to inject text into Omnidesk editor
-  window.addEventListener('message', function(e) {
-    if (e.data && e.data.type === 'OMNIDESK_INJECT_RESPONSE') {
-      var editor = document.querySelector('.redactor-editor, .redactor_editor');
-      if (editor) {
-        var p = document.createElement('p'); 
-        p.innerText = e.data.content; 
-        editor.appendChild(p);
-      } else {
-        var ta = document.querySelector('textarea[name="content"], #reply_content, #response_html, .case-response');
-        if (ta) {
-          ta.value += (ta.value ? '\\n\\n' : '') + e.data.content;
+  // Attempt immediately
+  if (!initWidget()) {
+    console.log('OmniAI Widget: Target not found yet, starting polling...');
+    // If not found, poll the DOM (for SPAs or async loading)
+    var attempts = 0;
+    var interval = setInterval(function() {
+      attempts++;
+      if (initWidget() || attempts > 20) { // Try for 10 seconds (20 * 500ms)
+        if (attempts > 20 && !document.getElementById('omniai-widget-container')) {
+           console.log('OmniAI Widget: Giving up on finding target, injecting to body');
+           var bodyTarget = document.body;
+           if(bodyTarget) {
+               // Fallback: just append it somewhere visible
+               var container = document.createElement('div');
+               container.id = 'omniai-widget-container';
+               container.style.position = 'fixed';
+               container.style.bottom = '20px';
+               container.style.right = '20px';
+               container.style.width = '400px';
+               container.style.height = '600px';
+               container.style.zIndex = '999999';
+               container.style.boxShadow = '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)';
+               container.style.borderRadius = '12px';
+               container.style.overflow = 'hidden';
+               container.style.backgroundColor = '#ffffff';
+               
+               var iframe = document.createElement('iframe');
+               iframe.src = '${widgetUrl}';
+               iframe.style.width = '100%';
+               iframe.style.height = '100%';
+               iframe.style.border = 'none';
+               
+               container.appendChild(iframe);
+               bodyTarget.appendChild(container);
+           }
         }
+        clearInterval(interval);
       }
-    }
-  });
-
+    }, 500);
+  }
 })();
 `;
   res.setHeader('Content-Type', 'application/javascript');
