@@ -446,13 +446,13 @@ app.get("/api/omnidesk/widget.js", (req, res) => {
     }
     
     // Try to find the ticket response area to inject below it
-    var renderTarget = document.getElementById('reply_wrapper') ||
+    var renderTarget = document.getElementById('response_answer_area') ||
+                       document.querySelector('.request-area.request-answer-area') ||
+                       document.getElementById('reply_wrapper') ||
                        document.querySelector('.reply-wrapper') ||
                        document.getElementById('reply_block') ||
                        document.getElementById('msg_form') ||
                        document.querySelector('.msg-form') ||
-                       document.getElementById('response_answer_area') || 
-                       document.querySelector('.request-area') || 
                        document.querySelector('#case_message_area') ||
                        document.querySelector('.case-content');
     
@@ -464,6 +464,8 @@ app.get("/api/omnidesk/widget.js", (req, res) => {
       container.style.marginBottom = '40px';
       container.style.width = '100%';
       container.style.clear = 'both';
+      container.style.position = 'relative';
+      container.style.zIndex = '9999';
       
       var iframe = document.createElement('iframe');
       iframe.src = '${widgetUrl}';
