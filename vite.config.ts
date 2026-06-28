@@ -20,8 +20,14 @@ export default defineConfig(() => {
     },
     build: {
       sourcemap: false,
+      minify: 'esbuild', // esbuild is extremely fast and low memory compared to terser
+      reportCompressedSize: false, // Отключает подсчет размера сжатых файлов для экономии RAM
+      chunkSizeWarningLimit: 1000,
       rollupOptions: {
-        maxParallelFileOps: 2
+        maxParallelFileOps: 2, // Ограничение на параллельную работу с файлами
+        output: {
+          manualChunks: undefined,
+        },
       }
     },
   };
