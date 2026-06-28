@@ -6,8 +6,8 @@ WORKDIR /app
 # Copy dependency manifests
 COPY package*.json ./
 
-# Install all dependencies
-RUN npm install && npm cache clean --force
+# Install all dependencies using ci for exact versions and less memory
+RUN npm ci --no-audit --no-fund
 
 # Copy source code
 COPY . .
@@ -18,14 +18,17 @@ ENV NODE_OPTIONS="--max-old-space-size=512"
 # Build the application
 RUN npm run build
 
+# Remove devDependencies before copying to the final image to save space
+RUN npm prune --omit=dev --no-audit --no-fund && npm cache clean --force
+
 # Final production image
 FROM node:20-slim
 
 WORKDIR /app
 
-# Install production dependencies only
+# Copy package info and production node_modules from builder
 COPY package*.json ./
-RUN npm install --omit=dev && npm cache clean --force
+COPY --from=builder /app/node_modules ./node_modules
 
 # Copy built assets from builder
 COPY --from=builder /app/dist ./dist
