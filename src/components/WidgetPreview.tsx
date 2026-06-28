@@ -115,14 +115,39 @@ export function WidgetUI({ darkMode, t, settings }: { darkMode: boolean, t: any,
     }
   }, []);
 
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.parent && !isStandalone) {
+      window.parent.postMessage({
+        type: 'OMNIDESK_RESIZE_WIDGET',
+        isCollapsed: isCollapsed
+      }, '*');
+    }
+  }, [isCollapsed, isStandalone]);
+
   const content = (
     <div className={`${isCollapsed ? 'h-auto pb-6' : 'h-[calc(100vh-2rem)]'} p-6 rounded-[2rem] border transition-all flex flex-col ${darkMode ? 'border-indigo-500/30 bg-slate-900 shadow-2xl' : 'border-indigo-100 bg-white shadow-2xl shadow-indigo-500/10'}`}>
-        <div className={`flex items-center justify-between shrink-0 ${isCollapsed ? '' : 'mb-6'}`}>
-          <div className="flex items-center gap-3">
-             <div className="w-10 h-10 rounded-xl bg-indigo-500 flex items-center justify-center shadow-lg shadow-indigo-500/40 cursor-pointer" onClick={() => setIsCollapsed(!isCollapsed)}>
+        <div 
+          className={`flex items-center justify-between shrink-0 ${isCollapsed ? '' : 'mb-6'} cursor-grab active:cursor-grabbing`}
+          onMouseDown={(e) => {
+            // Only initiate drag if left clicking and not clicking a button
+            if (e.button !== 0) return;
+            const target = e.target as HTMLElement;
+            if (target.closest('button') || target.closest('a') || target.closest('.cursor-pointer')) return;
+            
+            if (typeof window !== 'undefined' && window.parent && !isStandalone) {
+              window.parent.postMessage({
+                type: 'OMNIDESK_DRAG_START',
+                clientX: e.clientX,
+                clientY: e.clientY
+              }, '*');
+            }
+          }}
+        >
+          <div className="flex items-center gap-3 pointer-events-none">
+             <div className="w-10 h-10 rounded-xl bg-indigo-500 flex items-center justify-center shadow-lg shadow-indigo-500/40 pointer-events-auto cursor-pointer" onClick={() => setIsCollapsed(!isCollapsed)}>
                 <Brain className="w-5 h-5 text-white" />
              </div>
-             <div className="cursor-pointer select-none" onClick={() => setIsCollapsed(!isCollapsed)}>
+             <div className="cursor-pointer select-none pointer-events-auto" onClick={() => setIsCollapsed(!isCollapsed)}>
                 <h3 className={`font-black text-lg italic tracking-tight leading-none ${darkMode ? 'text-white' : 'text-slate-900'}`}>{t.ai_assistant}</h3>
                 <div className="flex items-center gap-2 mt-1.5">
                    <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
