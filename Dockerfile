@@ -3,17 +3,17 @@ FROM node:20-slim AS builder
 
 WORKDIR /app
 
+# Set memory limit for the build process to prevent OOM on small VPS
+ENV NODE_OPTIONS="--max-old-space-size=512"
+
 # Copy dependency manifests
 COPY package*.json ./
 
-# Install all dependencies using ci for exact versions and less memory
-RUN npm ci --no-audit --no-fund
+# Install all dependencies (npm install is used instead of ci to handle out-of-sync lockfile)
+RUN npm install --no-audit --no-fund
 
 # Copy source code
 COPY . .
-
-# Set memory limit for the build process to prevent OOM on small VPS
-ENV NODE_OPTIONS="--max-old-space-size=512"
 
 # Build the application
 RUN npm run build
