@@ -14,15 +14,24 @@ $(function() {
     `).appendTo('head');
 
     // --- 2. Глобальные переменные ---
+    console.log('AI Widget Integration: Starting initialization');
     const CASE_URL = document.location.href;
-    // Попытка извлечь ID из URL /cases/12345
-    const matchCaseId = CASE_URL.match(/\/cases\/(\d+)/);
-    const extractedCaseId = matchCaseId ? matchCaseId[1] : '';
+    console.log('AI Widget Integration: Current URL', CASE_URL);
+    
+    // Попытка извлечь ID из URL
+    let extractedCaseId = '';
+    const matchCaseId = CASE_URL.match(/(?:cases|record)s?\/.*?([0-9-]+)(?:[/?#]|$)/i) || CASE_URL.match(/\/([0-9-]+)(?:[/?#][^/]*)?$/);
+    if (matchCaseId) {
+        extractedCaseId = matchCaseId[1];
+        console.log('AI Widget Integration: Extracted Case ID from URL', extractedCaseId);
+    } else {
+        console.log('AI Widget Integration: Could not extract Case ID from URL');
+    }
     
     const CASE_ID = (typeof CurrentCaseId !== 'undefined' && CurrentCaseId) ? CurrentCaseId : extractedCaseId;
+    console.log('AI Widget Integration: Final CASE_ID used', CASE_ID);
     const USER_ID = typeof CurrentUserId !== 'undefined' ? CurrentUserId : '';
-    const matchUrl = CASE_URL.match(/\/(\d+-\d+)$/);
-    const CurrentCaseNumber = matchUrl ? matchUrl[1] : CASE_ID;
+    const CurrentCaseNumber = CASE_ID;
 
     const INFORMATION_PANEL_SELECTOR = '#info_user_info_panel';
     const HORIZONTAL_MENU_ELEMENTS_SELECTOR = '.primary-nav';
@@ -321,6 +330,7 @@ $(function() {
     // URL вашего приложения с параметром режима и номером тикета
     const widgetBaseUrl = 'https://ais-pre-2xbqggct6246qnh4ksospm-790449070015.europe-west2.run.app';
     iframe.src = `${widgetBaseUrl}/?mode=widget&case_number=${CASE_ID}`;
+    console.log('AI Widget Integration: Setting iframe src to', iframe.src);
     
     // Настраиваем стили iframe
     iframe.style.flex = '1';
@@ -441,6 +451,7 @@ $(function() {
       if (document.body) {
         document.body.appendChild(container);
         document.body.appendChild(dragOverlay);
+        console.log('AI Widget Integration: Widget container injected into body');
       } else {
         setTimeout(injectWidget, 100);
       }
@@ -454,6 +465,10 @@ $(function() {
 
     // 3. Обрабатываем событие вставки текста от виджета
     window.addEventListener('message', function(event) {
+      if (event.data && typeof event.data.type === 'string' && event.data.type.startsWith('OMNIDESK_')) {
+        console.log('AI Widget Integration: Received message', event.data);
+      }
+      
       if (event.data && event.data.type === 'OMNIDESK_DRAG_END') {
         if (isDragging) dragEnd();
       }

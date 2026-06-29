@@ -186,11 +186,39 @@ async function fetchOmnideskTicketContext(caseNumber: string) {
       console.log('No case id match found in', caseNumber);
       return null;
     }
-    const caseId = caseIdMatch[1];
+    let caseId = caseIdMatch[1];
     
     const domain = settings.omnidesk_domain.replace(/^https?:\/\//, '').replace(/\/$/, '');
     const auth = Buffer.from(`${settings.omnidesk_email}:${settings.omnidesk_api_key}`).toString('base64');
     
+    // If caseId contains a dash, it's a case_number. We need to find the real case_id first.
+    if (caseId.includes('-')) {
+      console.log(`Fetching case by case_number: https://${domain}/api/cases.json?case_number=${caseId}`);
+      const searchRes = await fetch(`https://${domain}/api/cases.json?case_number=${caseId}`, {
+        headers: { 'Authorization': `Basic ${auth}`, 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(5000)
+      });
+      if (searchRes.ok) {
+        const searchData = await searchRes.json();
+        // searchData could be an object with case IDs as keys, or an array, or have a 'case' field.
+        const casesArray = Array.isArray(searchData) ? searchData : Object.values(searchData).filter((v: any) => v && v.case);
+        const caseObj = casesArray.find((c: any) => c.case && c.case.case_number === caseId);
+        if (caseObj && caseObj.case) {
+          caseId = caseObj.case.case_id.toString();
+          console.log(`Resolved case_number ${caseIdMatch[1]} to case_id ${caseId}`);
+        } else {
+           // Maybe it's directly the first item
+           const firstItem = casesArray[0];
+           if (firstItem && firstItem.case) {
+             caseId = firstItem.case.case_id.toString();
+             console.log(`Resolved to first item case_id ${caseId}`);
+           }
+        }
+      } else {
+        console.log('Failed to resolve case_number:', await searchRes.text());
+      }
+    }
+
     console.log(`Fetching from: https://${domain}/api/cases/${caseId}.json`);
     const caseRes = await fetch(`https://${domain}/api/cases/${caseId}.json`, {
       headers: { 'Authorization': `Basic ${auth}`, 'Content-Type': 'application/json' },

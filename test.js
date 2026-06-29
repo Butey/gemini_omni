@@ -1,0 +1,1 @@
+const CASE_ID = (typeof NotDeclaredVar !== 'undefined' && NotDeclaredVar) ? NotDeclaredVar : 'fallback'; console.log(CASE_ID);

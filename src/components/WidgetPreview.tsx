@@ -141,7 +141,7 @@ export function WidgetUI({ darkMode, t, settings }: { darkMode: boolean, t: any,
             // Only initiate drag if left clicking and not clicking a button
             if (e.button !== 0) return;
             const target = e.target as HTMLElement;
-            if (target.closest('button') || target.closest('a') || target.closest('.cursor-pointer')) return;
+            if (target.closest('button') || target.closest('a') || target.closest('[data-no-drag="true"]')) return;
             
             if (typeof window !== 'undefined' && window.parent && !isStandalone) {
               window.parent.postMessage({
@@ -153,10 +153,10 @@ export function WidgetUI({ darkMode, t, settings }: { darkMode: boolean, t: any,
           }}
         >
           <div className="flex items-center gap-3 pointer-events-none">
-             <div className="w-10 h-10 rounded-xl bg-indigo-500 flex items-center justify-center shadow-lg shadow-indigo-500/40 pointer-events-auto cursor-pointer" onClick={() => setIsCollapsed(!isCollapsed)}>
+             <div data-no-drag="true" className="w-10 h-10 rounded-xl bg-indigo-500 flex items-center justify-center shadow-lg shadow-indigo-500/40 pointer-events-auto cursor-pointer" onClick={() => setIsCollapsed(!isCollapsed)}>
                 <Brain className="w-5 h-5 text-white" />
              </div>
-             <div className="cursor-pointer select-none pointer-events-auto" onClick={() => setIsCollapsed(!isCollapsed)}>
+             <div data-no-drag="true" className="select-none pointer-events-auto cursor-pointer" onClick={() => setIsCollapsed(!isCollapsed)}>
                 <h3 className={`font-black text-lg italic tracking-tight leading-none ${darkMode ? 'text-white' : 'text-slate-900'}`}>{t.ai_assistant}</h3>
                 <div className="flex items-center gap-2 mt-1.5">
                    <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
