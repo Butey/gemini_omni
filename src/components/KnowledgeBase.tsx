@@ -9,7 +9,10 @@ import {
   Trash2, 
   History,
   BrainCircuit,
-  MessageSquareQuote
+  MessageSquareQuote,
+  Link as LinkIcon,
+  FileUp,
+  Loader2
 } from 'lucide-react';
 import { KnowledgeBaseItem } from '../types';
 import { apiFetch } from '../lib/api';
@@ -20,6 +23,17 @@ export default function KnowledgeBase({ darkMode, t }: { darkMode: boolean, t: a
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState({ title: '', content: '', tags: '' });
+
+  // Upload / Scraping state
+  const [activeTab, setActiveTab] = useState<'manual' | 'link' | 'file'>('manual');
+  const [urlInput, setUrlInput] = useState('');
+  const [isScraping, setIsScraping] = useState(false);
+  const [scrapeError, setScrapeError] = useState('');
+  const [isDragOver, setIsDragOver] = useState(false);
+
+  // Detail view and custom dialog states
+  const [viewingItem, setViewingItem] = useState<KnowledgeBaseItem | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const fetchItems = () => {
     apiFetch('/api/knowledge-base')
@@ -32,6 +46,9 @@ export default function KnowledgeBase({ darkMode, t }: { darkMode: boolean, t: a
   }, []);
 
   const handleOpenModal = (item?: KnowledgeBaseItem) => {
+    setActiveTab('manual');
+    setUrlInput('');
+    setScrapeError('');
     if (item) {
       setEditingId(item.id);
       setFormData({
@@ -44,6 +61,48 @@ export default function KnowledgeBase({ darkMode, t }: { darkMode: boolean, t: a
       setFormData({ title: '', content: '', tags: '' });
     }
     setIsModalOpen(true);
+  };
+
+  const handleScrape = async () => {
+    if (!urlInput) return;
+    setIsScraping(true);
+    setScrapeError('');
+    try {
+      const res = await apiFetch('/api/knowledge-base/scrape', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: urlInput })
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || 'Failed to scrape URL');
+      }
+      await res.json();
+      setIsModalOpen(false);
+      setUrlInput('');
+      fetchItems();
+    } catch (err: any) {
+      setScrapeError(err.message || 'Ошибка импорта ссылки');
+    } finally {
+      setIsScraping(false);
+    }
+  };
+
+  const handleFileRead = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      setFormData({
+        title: file.name,
+        content: text,
+        tags: `file, ${file.name.split('.').pop() || 'imported'}`
+      });
+      setActiveTab('manual');
+    };
+    reader.onerror = () => {
+      alert('Не удалось прочитать файл');
+    };
+    reader.readAsText(file);
   };
 
   const handleSave = async () => {
@@ -70,9 +129,14 @@ export default function KnowledgeBase({ darkMode, t }: { darkMode: boolean, t: a
     fetchItems();
   };
 
-  const handleDelete = async (id: string) => {
-    if (confirm('Are you sure you want to delete this item?')) {
-      await apiFetch(`/api/knowledge-base/${id}`, { method: 'DELETE' });
+  const handleDelete = (id: string) => {
+    setDeletingId(id);
+  };
+
+  const confirmDelete = async () => {
+    if (deletingId) {
+      await apiFetch(`/api/knowledge-base/${deletingId}`, { method: 'DELETE' });
+      setDeletingId(null);
       fetchItems();
     }
   };
@@ -123,8 +187,15 @@ export default function KnowledgeBase({ darkMode, t }: { darkMode: boolean, t: a
       {/* Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
         {filteredItems.map(item => (
-          <div key={item.id} className={`p-8 rounded-[2rem] border transition-all group relative hover:scale-[1.02] active:scale-95 ${darkMode ? 'border-white/10 bg-white/5 hover:border-indigo-500/30 hover:bg-white/10' : 'border-slate-200 bg-white shadow-xl shadow-slate-200/50 hover:border-indigo-500/40 hover:shadow-2xl'}`}>
-            <button className={`absolute top-8 right-8 opacity-0 group-hover:opacity-100 transition-opacity p-2 rounded-xl ${darkMode ? 'hover:bg-white/10 text-slate-400' : 'hover:bg-slate-50 text-slate-400'}`}>
+          <div 
+            key={item.id} 
+            onClick={() => setViewingItem(item)}
+            className={`p-8 rounded-[2rem] border transition-all group relative hover:scale-[1.02] active:scale-95 cursor-pointer ${darkMode ? 'border-white/10 bg-white/5 hover:border-indigo-500/30 hover:bg-white/10' : 'border-slate-200 bg-white shadow-xl shadow-slate-200/50 hover:border-indigo-500/40 hover:shadow-2xl'}`}
+          >
+            <button 
+              onClick={(e) => { e.stopPropagation(); }}
+              className={`absolute top-8 right-8 opacity-0 group-hover:opacity-100 transition-opacity p-2 rounded-xl ${darkMode ? 'hover:bg-white/10 text-slate-400' : 'hover:bg-slate-50 text-slate-400'}`}
+            >
               <MoreVertical className="w-5 h-5" />
             </button>
             <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-8 border transition-transform group-hover:scale-110 group-hover:rotate-3 ${darkMode ? 'bg-indigo-500/10 border-indigo-500/20 shadow-[0_0_20px_rgba(99,102,241,0.1)]' : 'bg-indigo-50 border-indigo-100 shadow-lg shadow-indigo-500/5'}`}>
@@ -135,7 +206,7 @@ export default function KnowledgeBase({ darkMode, t }: { darkMode: boolean, t: a
               {item.content}
             </p>
             <div className="flex items-center flex-wrap gap-2.5">
-              {item.tags.map(tag => (
+              {(item.tags || []).map(tag => (
                 <span key={tag} className={`text-[9px] font-black px-4 py-1.5 rounded-xl border uppercase tracking-[0.2em] shadow-sm ${darkMode ? 'bg-indigo-500/10 text-indigo-300 border-indigo-500/20' : 'bg-indigo-50 text-indigo-600 border-indigo-100'}`}>
                   {tag}
                 </span>
@@ -147,15 +218,25 @@ export default function KnowledgeBase({ darkMode, t }: { darkMode: boolean, t: a
                  <span>Synced 2h ago</span>
                </div>
                <div className="flex gap-6">
-                 <button onClick={() => handleOpenModal(item)} className="hover:text-indigo-600 transition-colors pointer-events-auto">EDIT</button>
-                 <button onClick={() => handleDelete(item.id)} className="hover:text-red-500 transition-colors pointer-events-auto">DELETE</button>
+                 <button 
+                   onClick={(e) => { e.stopPropagation(); handleOpenModal(item); }} 
+                   className="hover:text-indigo-600 transition-colors pointer-events-auto"
+                 >
+                   EDIT
+                 </button>
+                 <button 
+                   onClick={(e) => { e.stopPropagation(); handleDelete(item.id); }} 
+                   className="hover:text-red-500 transition-colors pointer-events-auto"
+                 >
+                   DELETE
+                 </button>
                </div>
             </div>
           </div>
         ))}
 
         {/* Training Placeholder */}
-        <div className={`p-10 rounded-[2rem] border-2 border-dashed transition-all group flex flex-col items-center justify-center text-center cursor-pointer min-h-[350px] backdrop-blur-sm ${darkMode ? 'border-white/10 bg-white/5 hover:border-indigo-500/40' : 'border-slate-200 bg-slate-50 hover:border-indigo-500/40 hover:bg-white'}`}>
+        <div onClick={() => handleOpenModal()} className={`p-10 rounded-[2rem] border-2 border-dashed transition-all group flex flex-col items-center justify-center text-center cursor-pointer min-h-[350px] backdrop-blur-sm ${darkMode ? 'border-white/10 bg-white/5 hover:border-indigo-500/40' : 'border-slate-200 bg-slate-50 hover:border-indigo-500/40 hover:bg-white'}`}>
             <div className={`w-20 h-20 rounded-full flex items-center justify-center mb-8 border-2 group-hover:scale-110 transition-all ${darkMode ? 'bg-white/5 border-white/10' : 'bg-white border-slate-200 shadow-xl shadow-slate-200/50'}`}>
               <Plus className={`w-10 h-10 ${darkMode ? 'text-indigo-500/40 group-hover:text-indigo-400' : 'text-indigo-600/40 group-hover:text-indigo-600'}`} />
             </div>
@@ -170,36 +251,152 @@ export default function KnowledgeBase({ darkMode, t }: { darkMode: boolean, t: a
             <h3 className={`text-xl font-bold mb-4 ${darkMode ? 'text-white' : 'text-slate-900'}`}>
               {editingId ? 'Edit Entity' : 'Add Entity'}
             </h3>
+
+            {/* Modal Tabs (only when creating, not editing) */}
+            {!editingId && (
+              <div className={`flex border-b mb-6 ${darkMode ? 'border-white/10' : 'border-slate-100'}`}>
+                <button
+                  onClick={() => setActiveTab('manual')}
+                  className={`flex-1 pb-3 text-[10px] font-black uppercase tracking-wider border-b-2 transition-all ${
+                    activeTab === 'manual'
+                      ? 'border-indigo-500 text-indigo-500'
+                      : 'border-transparent text-slate-400 hover:text-slate-500'
+                  }`}
+                >
+                  Ручной ввод
+                </button>
+                <button
+                  onClick={() => setActiveTab('link')}
+                  className={`flex-1 pb-3 text-[10px] font-black uppercase tracking-wider border-b-2 transition-all ${
+                    activeTab === 'link'
+                      ? 'border-indigo-500 text-indigo-500'
+                      : 'border-transparent text-slate-400 hover:text-slate-500'
+                  }`}
+                >
+                  Импорт ссылки
+                </button>
+                <button
+                  onClick={() => setActiveTab('file')}
+                  className={`flex-1 pb-3 text-[10px] font-black uppercase tracking-wider border-b-2 transition-all ${
+                    activeTab === 'file'
+                      ? 'border-indigo-500 text-indigo-500'
+                      : 'border-transparent text-slate-400 hover:text-slate-500'
+                  }`}
+                >
+                  Загрузить файл
+                </button>
+              </div>
+            )}
             
             <div className="space-y-4">
-              <div>
-                <label className={`block text-xs font-bold mb-2 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Title</label>
-                <input
-                  type="text"
-                  value={formData.title}
-                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  className={`w-full p-3 rounded-xl border text-sm focus:border-indigo-500/50 outline-none ${darkMode ? 'bg-black/40 border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'}`}
-                />
-              </div>
-              
-              <div>
-                <label className={`block text-xs font-bold mb-2 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Content</label>
-                <textarea
-                  value={formData.content}
-                  onChange={(e) => setFormData({ ...formData, content: e.target.value })}
-                  className={`w-full h-32 p-3 rounded-xl border text-sm resize-none focus:border-indigo-500/50 outline-none ${darkMode ? 'bg-black/40 border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'}`}
-                />
-              </div>
+              {activeTab === 'manual' || editingId ? (
+                <>
+                  <div>
+                    <label className={`block text-xs font-bold mb-2 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Title</label>
+                    <input
+                      type="text"
+                      value={formData.title}
+                      onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                      className={`w-full p-3 rounded-xl border text-sm focus:border-indigo-500/50 outline-none ${darkMode ? 'bg-black/40 border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'}`}
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className={`block text-xs font-bold mb-2 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Content</label>
+                    <textarea
+                      value={formData.content}
+                      onChange={(e) => setFormData({ ...formData, content: e.target.value })}
+                      className={`w-full h-32 p-3 rounded-xl border text-sm resize-none focus:border-indigo-500/50 outline-none ${darkMode ? 'bg-black/40 border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'}`}
+                    />
+                  </div>
 
-              <div>
-                <label className={`block text-xs font-bold mb-2 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Tags (comma separated)</label>
-                <input
-                  type="text"
-                  value={formData.tags}
-                  onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
-                  className={`w-full p-3 rounded-xl border text-sm focus:border-indigo-500/50 outline-none ${darkMode ? 'bg-black/40 border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'}`}
-                />
-              </div>
+                  <div>
+                    <label className={`block text-xs font-bold mb-2 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Tags (comma separated)</label>
+                    <input
+                      type="text"
+                      value={formData.tags}
+                      onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
+                      className={`w-full p-3 rounded-xl border text-sm focus:border-indigo-500/50 outline-none ${darkMode ? 'bg-black/40 border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'}`}
+                    />
+                  </div>
+                </>
+              ) : activeTab === 'link' ? (
+                <div className="space-y-4">
+                  <div className={`p-4 rounded-2xl border ${darkMode ? 'bg-black/20 border-white/5' : 'bg-slate-50 border-slate-100'}`}>
+                    <p className="text-xs text-slate-500 mb-3 font-medium">
+                      Укажите веб-ссылку на документацию или статью (например, <code>https://dev.iridi.com/...</code>). Наш парсер загрузит страницу, очистит её от HTML-тегов и автоматически добавит в базу знаний.
+                    </p>
+                    <div className="flex gap-2">
+                      <input
+                        type="url"
+                        placeholder="https://example.com/docs"
+                        value={urlInput}
+                        onChange={(e) => setUrlInput(e.target.value)}
+                        className={`flex-1 p-3 rounded-xl border text-sm outline-none ${darkMode ? 'bg-black/40 border-white/10 text-white' : 'bg-white border-slate-200 text-slate-900'}`}
+                      />
+                      <button
+                        onClick={handleScrape}
+                        disabled={isScraping || !urlInput}
+                        className="px-5 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-black text-[10px] tracking-wider uppercase rounded-xl disabled:opacity-50 transition-colors flex items-center gap-2"
+                      >
+                        {isScraping ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Импорт...
+                          </>
+                        ) : (
+                          'Импорт'
+                        )}
+                      </button>
+                    </div>
+                    {scrapeError && (
+                      <p className="text-xs text-red-500 mt-2 font-semibold">{scrapeError}</p>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setIsDragOver(true);
+                    }}
+                    onDragLeave={() => setIsDragOver(false)}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setIsDragOver(false);
+                      const file = e.dataTransfer.files?.[0];
+                      if (file) handleFileRead(file);
+                    }}
+                    className={`p-8 rounded-2xl border-2 border-dashed text-center transition-all flex flex-col items-center justify-center min-h-[180px] cursor-pointer ${
+                      isDragOver 
+                        ? 'border-indigo-500 bg-indigo-500/10' 
+                        : darkMode 
+                          ? 'border-white/10 bg-black/20 hover:border-indigo-500/30' 
+                          : 'border-slate-200 bg-slate-50 hover:border-indigo-500/40'
+                    }`}
+                    onClick={() => document.getElementById('kb-file-input')?.click()}
+                  >
+                    <input
+                      id="kb-file-input"
+                      type="file"
+                      accept=".txt,.md,.json,.html,.xml,.csv,.js,.ts"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleFileRead(file);
+                      }}
+                    />
+                    <FileUp className="w-10 h-10 text-indigo-500 mb-3" />
+                    <p className={`text-xs font-bold ${darkMode ? 'text-white' : 'text-slate-700'}`}>
+                      Перетащите файл сюда или кликните для выбора
+                    </p>
+                    <p className="text-[10px] text-slate-500 mt-1 uppercase tracking-widest font-black">
+                      Поддерживаются .txt, .md, .json, .html, .csv до 5MB
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="flex justify-end gap-3 mt-6">
@@ -209,11 +406,106 @@ export default function KnowledgeBase({ darkMode, t }: { darkMode: boolean, t: a
               >
                 Cancel
               </button>
+              {(activeTab === 'manual' || editingId) && (
+                <button
+                  onClick={handleSave}
+                  className="px-6 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-colors"
+                >
+                  Save
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* VIEW MATERIAL DETAIL MODAL */}
+      {viewingItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className={`w-full max-w-2xl p-6 rounded-3xl border flex flex-col max-h-[90vh] ${darkMode ? 'bg-zinc-900 border-white/10 text-white' : 'bg-white border-slate-200 text-slate-900'} shadow-2xl`}>
+            <div className="flex items-start justify-between gap-4 mb-4">
+              <div>
+                <span className={`text-[9px] font-black px-3 py-1 rounded-md uppercase tracking-wider ${darkMode ? 'bg-indigo-500/10 text-indigo-300' : 'bg-indigo-50 text-indigo-600'}`}>
+                  Просмотр материала
+                </span>
+                <h3 className="text-xl font-black italic tracking-tight mt-2">{viewingItem.title}</h3>
+              </div>
               <button
-                onClick={handleSave}
-                className="px-6 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-colors"
+                onClick={() => setViewingItem(null)}
+                className={`p-1.5 rounded-lg transition-colors ${darkMode ? 'hover:bg-white/10 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}
               >
-                Save
+                ✕
+              </button>
+            </div>
+
+            <div className={`flex-1 overflow-y-auto pr-2 my-4 p-4 rounded-2xl border ${darkMode ? 'bg-black/20 border-white/5' : 'bg-slate-50 border-slate-100'}`}>
+              <p className="text-sm font-sans whitespace-pre-wrap leading-relaxed">
+                {viewingItem.content}
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-2 mb-6">
+              {(viewingItem.tags || []).map(tag => (
+                <span key={tag} className={`text-[9px] font-black px-4 py-1.5 rounded-xl border uppercase tracking-[0.2em] shadow-sm ${darkMode ? 'bg-indigo-500/10 text-indigo-300 border-indigo-500/20' : 'bg-indigo-50 text-indigo-600 border-indigo-100'}`}>
+                  {tag}
+                </span>
+              ))}
+            </div>
+
+            <div className="flex justify-between items-center border-t pt-4 border-slate-200/50 dark:border-white/5">
+              <div className="text-xs text-slate-400 font-medium">
+                ID: <code className="font-mono text-[10px]">{viewingItem.id}</code>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    const itemToEdit = viewingItem;
+                    setViewingItem(null);
+                    handleOpenModal(itemToEdit);
+                  }}
+                  className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-colors shadow-lg shadow-indigo-600/20"
+                >
+                  Редактировать
+                </button>
+                <button
+                  onClick={() => {
+                    const idToDelete = viewingItem.id;
+                    setViewingItem(null);
+                    setDeletingId(idToDelete);
+                  }}
+                  className="px-5 py-2.5 rounded-xl border border-red-500/30 text-red-500 hover:bg-red-500/10 text-xs font-bold transition-colors"
+                >
+                  Удалить
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CUSTOM DELETE CONFIRMATION DIALOG */}
+      {deletingId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className={`w-full max-w-md p-6 rounded-3xl border ${darkMode ? 'bg-zinc-900 border-white/10 text-white' : 'bg-white border-slate-200 text-slate-900'} shadow-2xl`}>
+            <div className="flex items-center gap-3 mb-4 text-red-500">
+              <Trash2 className="w-6 h-6" />
+              <h3 className="text-lg font-bold">Удалить запись из базы знаний?</h3>
+            </div>
+            <p className={`text-sm mb-6 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+              Вы действительно хотите навсегда удалить эту запись? Данное действие необратимо.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setDeletingId(null)}
+                className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-colors ${darkMode ? 'hover:bg-white/10 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}
+              >
+                Отмена
+              </button>
+              <button
+                onClick={confirmDelete}
+                className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition-colors shadow-lg shadow-red-600/20"
+              >
+                Удалить
               </button>
             </div>
           </div>

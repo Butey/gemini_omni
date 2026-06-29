@@ -45,7 +45,7 @@ let settings: AppSettings = {
   model_name: "gemini-3.5-flash",
   custom_models: "",
   api_key: process.env.GEMINI_API_KEY || "",
-  system_prompt: "You are a helpful technical support assistant for our internal tool and BookStack. Use the provided context to answer user queries accurately and professionally. Всегда отвечай на русском языке, если только клиент не пишет на другом языке или нет прямого запроса на перевод.",
+  system_prompt: "You are the iRidi Knowledge Assistant. Your role is to help both iRidi employees and external users understand and work with iRidi products.\n\nSOURCES AND CONTEXT:\nYou must answer questions ONLY using verified information from the official iRidi documentation, which includes:\n- dev.iridi.com\n- doc.iridi.com\n- devbms.iridi.com/scada\n- The provided local Knowledge Base articles, linked files, web documents, and custom materials.\n\nSTRICT RULES OF RELIABILITY:\n- Never invent features or technical details.\n- Never speculate.\n- If information is unavailable or uncertain in the provided context (neither in the official websites nor in the local Knowledge Base), you must explicitly state: \"This information is not available in the known documentation.\" It is always better to report that information is not found than to invent it.\n\nRESPONSE FORMAT AND STYLE:\n- Prefer concise, structured responses.\n- Use step-by-step instructions where applicable.\n- Include configuration examples and code blocks if they are documented.\n- Adapt the depth of your explanation depending on the user.\n- Always reply in Russian unless requested otherwise.",
   temperature: 0.7,
   top_p: 0.95,
   max_tokens: 2048,
@@ -105,6 +105,11 @@ const loadData = () => {
   try {
     if (fs.existsSync(SETTINGS_FILE)) {
       settings = { ...settings, ...JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf-8')) };
+      // Upgrade system prompt if it contains old default value
+      if (settings.system_prompt && settings.system_prompt.startsWith("You are a helpful technical support assistant")) {
+        settings.system_prompt = "You are the iRidi Knowledge Assistant. Your role is to help both iRidi employees and external users understand and work with iRidi products.\n\nSOURCES AND CONTEXT:\nYou must answer questions ONLY using verified information from the official iRidi documentation, which includes:\n- dev.iridi.com\n- doc.iridi.com\n- devbms.iridi.com/scada\n- The provided local Knowledge Base articles, linked files, web documents, and custom materials.\n\nSTRICT RULES OF RELIABILITY:\n- Never invent features or technical details.\n- Never speculate.\n- If information is unavailable or uncertain in the provided context (neither in the official websites nor in the local Knowledge Base), you must explicitly state: \"This information is not available in the known documentation.\" It is always better to report that information is not found than to invent it.\n\nRESPONSE FORMAT AND STYLE:\n- Prefer concise, structured responses.\n- Use step-by-step instructions where applicable.\n- Include configuration examples and code blocks if they are documented.\n- Adapt the depth of your explanation depending on the user.\n- Always reply in Russian unless requested otherwise.";
+        saveData();
+      }
     }
     if (fs.existsSync(KB_FILE)) {
       knowledgeBase = JSON.parse(fs.readFileSync(KB_FILE, 'utf-8'));
@@ -784,6 +789,70 @@ app.post("/api/knowledge-base", requireAuth, (req, res) => {
   knowledgeBase.push(newItem);
   saveData();
   res.json(newItem);
+});
+
+app.post("/api/knowledge-base/scrape", requireAuth, async (req, res) => {
+  const { url } = req.body;
+  if (!url) {
+    return res.status(400).json({ error: "URL is required" });
+  }
+
+  try {
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      },
+      signal: AbortSignal.timeout(10000)
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to fetch URL: ${response.statusText} (${response.status})`);
+    }
+    const html = await response.text();
+
+    // Extract title from <title> tag
+    const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+    let title = titleMatch ? titleMatch[1].trim() : url;
+    title = title
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'");
+
+    // Clean html body content
+    let bodyText = html;
+    bodyText = bodyText.replace(/<script[^>]*>([\s\S]*?)<\/script>/gi, '');
+    bodyText = bodyText.replace(/<style[^>]*>([\s\S]*?)<\/style>/gi, '');
+    bodyText = bodyText.replace(/<!--([\s\S]*?)-->/g, '');
+    bodyText = bodyText.replace(/<\/p>|<\/div>|<\/h[1-6]>|<\/li>|<\/tr>/gi, '\n');
+    bodyText = bodyText.replace(/<[^>]*>/g, ' ');
+    bodyText = bodyText
+      .replace(/&nbsp;/g, ' ')
+      .replace(/\r\n|\r/g, '\n')
+      .replace(/[ \t]+/g, ' ')
+      .replace(/\n\s*\n+/g, '\n\n')
+      .trim();
+
+    // Limit length to avoid too large prompts
+    const maxLen = 15000;
+    const content = bodyText.length > maxLen ? bodyText.substring(0, maxLen) + "\n\n[Content truncated due to length limits...]" : bodyText;
+
+    const newItem = {
+      id: `link-${Math.random().toString(36).substr(2, 9)}`,
+      title: title || `Imported URL: ${url}`,
+      content: `Source Link: ${url}\n\n${content}`,
+      tags: ['link', 'imported']
+    };
+
+    knowledgeBase.push(newItem);
+    saveData();
+
+    res.json(newItem);
+  } catch (error: any) {
+    console.error("Scraping Error:", error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 app.put("/api/knowledge-base/:id", requireAuth, (req, res) => {
