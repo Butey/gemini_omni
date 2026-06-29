@@ -48,30 +48,58 @@ export function WidgetUI({ darkMode, t, settings }: { darkMode: boolean, t: any,
     return false;
   });
 
-  // Messaging Bridge: Send content to Omnidesk Parent
-  const applyDraft = (text: string, target: 'message' | 'note' = 'message') => {
+  // Messaging Bridge: Send content to Omnidesk Parent and API
+  const applyDraft = async (text: string, target: 'message' | 'note' = 'message') => {
+    // 1. Instant local DOM injection via postMessage
     if (typeof window !== 'undefined' && window.parent && !isStandalone) {
       window.parent.postMessage({
         type: 'OMNIDESK_INJECT_RESPONSE',
         target: target,
         content: text
       }, '*');
+    }
+
+    const btn = document.activeElement as HTMLElement;
+    const originalText = btn ? btn.innerText : '';
+    if (btn) {
+      btn.innerText = 'Отправка...';
+      btn.style.pointerEvents = 'none';
+    }
+
+    try {
+      const endpoint = target === 'message' 
+        ? `/api/omnidesk/cases/${caseNumber}/messages` 
+        : `/api/omnidesk/cases/${caseNumber}/notes`;
       
-      // Visual feedback
-      const btn = document.activeElement as HTMLElement;
-      if (btn) {
-        const originalText = btn.innerText;
-        btn.innerText = target === 'message' ? 'Вставлено в ответ!' : 'Вставлено в заметку!';
-        setTimeout(() => { btn.innerText = originalText; }, 2000);
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: text })
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Ошибка API Omnidesk');
       }
-    } else {
-      // In standalone mode, just copy to clipboard
-      navigator.clipboard.writeText(text);
-      const btn = document.activeElement as HTMLElement;
+
       if (btn) {
-        const originalText = btn.innerText;
-        btn.innerText = 'Скопировано!';
-        setTimeout(() => { btn.innerText = originalText; }, 2000);
+        btn.innerText = target === 'message' ? 'В ответ отправлено!' : 'В заметку добавлено!';
+      }
+    } catch (error: any) {
+      console.error('Omnidesk API send error:', error);
+      if (btn) {
+        btn.innerText = 'Ошибка отправки!';
+      }
+      // Clipboard fallback in case of errors
+      if (isStandalone) {
+        navigator.clipboard.writeText(text);
+      }
+    } finally {
+      if (btn) {
+        setTimeout(() => {
+          btn.innerText = originalText;
+          btn.style.pointerEvents = 'auto';
+        }, 3000);
       }
     }
   };
@@ -516,10 +544,20 @@ export default function WidgetPreview({ darkMode, t, settings }: { darkMode: boo
                        if (activeDraftTab === 'reply') {
                          if (!replyDraft.trim()) return;
                          setMessages(prev => [...prev, { role: 'agent', text: replyDraft }]);
+                         fetch(`/api/omnidesk/cases/${caseNumber}/messages`, {
+                           method: 'POST',
+                           headers: { 'Content-Type': 'application/json' },
+                           body: JSON.stringify({ content: replyDraft })
+                         }).catch(err => console.error('Error sending message:', err));
                          setReplyDraft('');
                        } else {
                          if (!noteDraft.trim()) return;
                          setMessages(prev => [...prev, { role: 'note', text: noteDraft }]);
+                         fetch(`/api/omnidesk/cases/${caseNumber}/notes`, {
+                           method: 'POST',
+                           headers: { 'Content-Type': 'application/json' },
+                           body: JSON.stringify({ content: noteDraft })
+                         }).catch(err => console.error('Error sending note:', err));
                          setNoteDraft('');
                        }
                      }}
