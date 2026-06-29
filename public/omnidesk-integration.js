@@ -516,24 +516,145 @@ $(function() {
       }
       if (event.data && event.data.type === 'OMNIDESK_INJECT_RESPONSE') {
         const draftText = event.data.content;
+        const target = event.data.target || 'message'; // 'message' or 'note'
         
-        // Ищем поле ответа Omnidesk (обычно это div с классом redactor-editor или textarea)
-        const editorDiv = document.querySelector('.redactor-editor') || document.querySelector('.redactor_editor');
+        console.log('AI Widget Integration: Injecting response into target:', target);
         
-        if (editorDiv) {
-          // Добавляем текст в визуальный редактор
-          const p = document.createElement('p');
-          p.innerText = draftText;
-          editorDiv.appendChild(p);
+        // 1. Попытка переключить вкладку в Omnidesk (чтобы агент видел куда вставляется текст)
+        let tabElement = null;
+        if (target === 'note') {
+          tabElement = document.querySelector('.js-note-tab, #add_note, #note-tab, [data-tab="note"], [data-type="note"], [data-pane="note"]');
+          if (!tabElement) {
+            tabElement = Array.from(document.querySelectorAll('a, button, span, div, li')).find(el => {
+              const text = el.textContent.trim().toLowerCase();
+              return text === 'заметка' || text === 'добавить заметку' || text === 'внутренняя заметка' || text === 'создать заметку';
+            });
+          }
         } else {
-          // Запасной вариант для простых textarea
-          const textarea = document.querySelector('textarea[name="content"]') || document.querySelector('#reply_content');
-          if (textarea) {
-            textarea.value += (textarea.value ? '\n\n' : '') + draftText;
-          } else {
-            console.warn('AI Widget: Не найдено поле для вставки ответа.');
+          tabElement = document.querySelector('.js-reply-tab, #add_message, #reply-tab, [data-tab="reply"], [data-type="message"], [data-pane="reply"]');
+          if (!tabElement) {
+            tabElement = Array.from(document.querySelectorAll('a, button, span, div, li')).find(el => {
+              const text = el.textContent.trim().toLowerCase();
+              return text === 'ответ' || text === 'написать ответ' || text === 'сообщение' || text === 'ответить';
+            });
           }
         }
+
+        if (tabElement) {
+          console.log('AI Widget Integration: Clicking tab element', tabElement);
+          tabElement.click();
+        }
+
+        // 2. Функция для вставки текста в контейнер редактора
+        function injectIntoContainer(containerSelector, fallbackSelectors, isNote) {
+          const container = document.querySelector(containerSelector);
+          let editorDiv = null;
+          let textarea = null;
+
+          if (container) {
+            editorDiv = container.querySelector('.redactor-editor, .redactor_editor, div[contenteditable="true"]');
+            textarea = container.querySelector('textarea');
+          } else {
+            for (const sel of fallbackSelectors) {
+              const el = document.querySelector(sel);
+              if (el) {
+                if (el.tagName === 'TEXTAREA') textarea = el;
+                else if (el.getAttribute('contenteditable') === 'true' || el.classList.contains('redactor-editor')) editorDiv = el;
+              }
+            }
+          }
+
+          if (!editorDiv && !textarea) {
+            const allEditors = Array.from(document.querySelectorAll('.redactor-editor, .redactor_editor, div[contenteditable="true"]'));
+            editorDiv = allEditors.find(el => {
+              const rect = el.getBoundingClientRect();
+              return rect.width > 0 && rect.height > 0;
+            }) || allEditors[0];
+          }
+
+          let injected = false;
+
+          if (editorDiv) {
+            console.log('AI Widget Integration: Found editor div, inserting text');
+            const currentHTML = editorDiv.innerHTML.trim();
+            const p = document.createElement('p');
+            p.innerText = draftText;
+            
+            if (currentHTML && currentHTML !== '<p><br></p>') {
+              editorDiv.appendChild(p);
+            } else {
+              editorDiv.innerHTML = '';
+              editorDiv.appendChild(p);
+            }
+            
+            editorDiv.dispatchEvent(new Event('input', { bubbles: true }));
+            editorDiv.dispatchEvent(new Event('change', { bubbles: true }));
+            editorDiv.dispatchEvent(new Event('blur', { bubbles: true }));
+            
+            try {
+              const $editor = window.jQuery ? window.jQuery(editorDiv) : null;
+              if ($editor && typeof $editor.redactor === 'function') {
+                $editor.redactor('code.set', editorDiv.innerHTML);
+              }
+            } catch (e) {
+              console.warn('AI Widget: Redactor jQuery synchronization warning', e);
+            }
+            injected = true;
+          }
+
+          if (!textarea && container) {
+            textarea = container.querySelector('textarea');
+          }
+          if (!textarea) {
+            textarea = document.querySelector(isNote ? 'textarea[name="note"], textarea#note_content' : 'textarea[name="content"], textarea#reply_content');
+          }
+
+          if (textarea) {
+            console.log('AI Widget Integration: Found textarea, appending text');
+            const val = textarea.value;
+            textarea.value = (val ? val + '\n\n' : '') + draftText;
+            textarea.dispatchEvent(new Event('input', { bubbles: true }));
+            textarea.dispatchEvent(new Event('change', { bubbles: true }));
+            injected = true;
+          }
+
+          return injected;
+        }
+
+        const performInjection = () => {
+          let success = false;
+          if (target === 'note') {
+            success = injectIntoContainer(
+              '#case_note_form, .note-block, .note_form_block, .js-note-form, .case-note-editor-holder',
+              ['textarea[name="note"]', 'textarea#note_content', '#add_note_form'],
+              true
+            );
+          } else {
+            success = injectIntoContainer(
+              '#case_reply_form, .reply-block, .reply_form_block, .js-reply-form, .case-reply-editor-holder',
+              ['textarea[name="content"]', 'textarea#reply_content', '#reply_content'],
+              false
+            );
+          }
+
+          if (!success) {
+            console.warn('AI Widget: Could not target specific editor. Trying visible editor fallback.');
+            const visibleEditor = Array.from(document.querySelectorAll('.redactor-editor, .redactor_editor')).find(el => {
+              const r = el.getBoundingClientRect();
+              return r.width > 0 && r.height > 0;
+            });
+            if (visibleEditor) {
+              const p = document.createElement('p');
+              p.innerText = draftText;
+              visibleEditor.appendChild(p);
+              visibleEditor.dispatchEvent(new Event('input', { bubbles: true }));
+              visibleEditor.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+          }
+        };
+
+        performInjection();
+        setTimeout(performInjection, 80);
       }
     });
 });

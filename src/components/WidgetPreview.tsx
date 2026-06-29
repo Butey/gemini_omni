@@ -49,10 +49,11 @@ export function WidgetUI({ darkMode, t, settings }: { darkMode: boolean, t: any,
   });
 
   // Messaging Bridge: Send content to Omnidesk Parent
-  const applyDraft = (text: string) => {
+  const applyDraft = (text: string, target: 'message' | 'note' = 'message') => {
     if (typeof window !== 'undefined' && window.parent && !isStandalone) {
       window.parent.postMessage({
         type: 'OMNIDESK_INJECT_RESPONSE',
+        target: target,
         content: text
       }, '*');
       
@@ -60,7 +61,7 @@ export function WidgetUI({ darkMode, t, settings }: { darkMode: boolean, t: any,
       const btn = document.activeElement as HTMLElement;
       if (btn) {
         const originalText = btn.innerText;
-        btn.innerText = 'Применено!';
+        btn.innerText = target === 'message' ? 'Вставлено в ответ!' : 'Вставлено в заметку!';
         setTimeout(() => { btn.innerText = originalText; }, 2000);
       }
     } else {
@@ -225,12 +226,20 @@ export function WidgetUI({ darkMode, t, settings }: { darkMode: boolean, t: any,
                             <span className="text-[9px] font-bold text-slate-500 opacity-50">{s.confidence}% Match</span>
                          </div>
                          <p className={`text-xs font-bold leading-relaxed mb-4 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>{s.text}</p>
-                         <button 
-                           onClick={() => applyDraft(s.text)}
-                           className="w-full py-2.5 bg-indigo-600/10 hover:bg-indigo-600 hover:text-white border border-indigo-500/20 text-indigo-500 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all"
-                         >
-                           {'Вставить в ответ'}
-                         </button>
+                         <div className="flex gap-2">
+                           <button 
+                             onClick={() => applyDraft(s.text, 'message')}
+                             className="flex-1 py-2 bg-indigo-600/10 hover:bg-indigo-600 hover:text-white border border-indigo-500/20 text-indigo-500 dark:text-indigo-400 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all"
+                           >
+                             {'Вставить в ответ'}
+                           </button>
+                           <button 
+                             onClick={() => applyDraft(s.text, 'note')}
+                             className="flex-1 py-2 bg-emerald-600/10 hover:bg-emerald-600 hover:text-white border border-emerald-500/20 text-emerald-500 dark:text-emerald-400 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all"
+                           >
+                             {'Вставить в заметку'}
+                           </button>
+                         </div>
                       </div>
                     ))}
                   </div>
@@ -323,13 +332,34 @@ export function WidgetUI({ darkMode, t, settings }: { darkMode: boolean, t: any,
 }
 
 export default function WidgetPreview({ darkMode, t, settings }: { darkMode: boolean, t: any, settings?: AppSettings | null }) {
-  const [messages, setMessages] = useState([
+  const [messages, setMessages] = useState<any[]>([
     { role: 'user', text: 'Здравствуйте! Пытаюсь войти в свой аккаунт, но кнопка "Войти" не нажимается. Пробовал в разных браузерах.' },
     { role: 'agent', text: 'Добрый день! Пожалуйста, очистите кэш вашего браузера и попробуйте еще раз.' },
     { role: 'user', text: 'Кэш очистил, проблема осталась. Также не вижу ссылку на сброс пароля.' },
   ]);
   const [loading, setLoading] = useState(false);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [activeDraftTab, setActiveDraftTab] = useState<'reply' | 'note'>('reply');
+  const [replyDraft, setReplyDraft] = useState('');
+  const [noteDraft, setNoteDraft] = useState('');
+
+  // Intercept the postMessage call from the widget within the same window to simulate Omnidesk's side
+  useEffect(() => {
+    const handleMessageInPreview = (event: MessageEvent) => {
+      if (event.data && event.data.type === 'OMNIDESK_INJECT_RESPONSE') {
+        const { target, content } = event.data;
+        if (target === 'note') {
+          setNoteDraft(prev => (prev ? prev + '\n\n' : '') + content);
+          setActiveDraftTab('note');
+        } else {
+          setReplyDraft(prev => (prev ? prev + '\n\n' : '') + content);
+          setActiveDraftTab('reply');
+        }
+      }
+    };
+    window.addEventListener('message', handleMessageInPreview);
+    return () => window.removeEventListener('message', handleMessageInPreview);
+  }, []);
 
   const [caseNumber] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -394,33 +424,107 @@ export default function WidgetPreview({ darkMode, t, settings }: { darkMode: boo
         </div>
         
         <div className="flex-1 overflow-y-auto space-y-8 mb-8 pr-4 custom-scrollbar">
-          {messages.map((msg, idx) => (
-            <div key={idx} className={`flex gap-6 ${msg.role === 'agent' ? 'flex-row-reverse' : ''}`}>
-               <div className={`w-10 h-10 rounded-xl shrink-0 flex items-center justify-center border ${msg.role === 'agent' ? (darkMode ? 'bg-indigo-500/10 border-indigo-500/20 text-indigo-400' : 'bg-indigo-50 border-indigo-100 text-indigo-600') : (darkMode ? 'bg-slate-800 border-white/5 text-slate-400' : 'bg-slate-100 border-slate-200 text-slate-500')}`}>
-                  {msg.role === 'agent' ? <Bot className="w-5 h-5" /> : <User className="w-5 h-5" />}
-               </div>
-               <div className={`flex-1 p-6 rounded-3xl border transition-all ${msg.role === 'agent' ? (darkMode ? 'bg-indigo-500/5 border-indigo-500/10' : 'bg-indigo-50/30 border-indigo-100/50') : (darkMode ? 'bg-black/20 border-white/5' : 'bg-slate-50 border-slate-100')}`}>
-                  <div className="flex items-center justify-between mb-3">
-                     <span className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">{msg.role === 'agent' ? 'Support Agent' : 'Customer Account'}</span>
-                     <span className="text-[9px] font-bold text-slate-500 opacity-50">12:45 PM</span>
-                  </div>
-                  <p className={`text-sm font-bold leading-relaxed ${darkMode ? 'text-slate-300' : 'text-slate-900'}`}>{msg.text}</p>
-               </div>
-            </div>
-          ))}
+          {messages.map((msg, idx) => {
+            const isAgent = msg.role === 'agent';
+            const isNote = msg.role === 'note';
+            
+            let cardBg = '';
+            let labelText = '';
+            let labelColor = 'text-slate-500';
+            let iconBox = null;
+
+            if (isAgent) {
+              cardBg = darkMode ? 'bg-indigo-500/5 border-indigo-500/10' : 'bg-indigo-50/30 border-indigo-100/50';
+              labelText = 'Support Agent';
+              iconBox = (
+                <div className={`w-10 h-10 rounded-xl shrink-0 flex items-center justify-center border ${darkMode ? 'bg-indigo-500/10 border-indigo-500/20 text-indigo-400' : 'bg-indigo-50 border-indigo-100 text-indigo-600'}`}>
+                  <Bot className="w-5 h-5" />
+                </div>
+              );
+            } else if (isNote) {
+              cardBg = darkMode ? 'bg-amber-500/5 border-amber-500/20' : 'bg-amber-50/40 border-amber-200/50';
+              labelText = 'Internal Note';
+              labelColor = 'text-amber-500';
+              iconBox = (
+                <div className={`w-10 h-10 rounded-xl shrink-0 flex items-center justify-center border ${darkMode ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' : 'bg-amber-50 border-amber-100 text-amber-600'}`}>
+                  <Bot className="w-5 h-5 text-amber-500" />
+                </div>
+              );
+            } else {
+              cardBg = darkMode ? 'bg-black/20 border-white/5' : 'bg-slate-50 border-slate-100';
+              labelText = 'Customer Account';
+              iconBox = (
+                <div className={`w-10 h-10 rounded-xl shrink-0 flex items-center justify-center border ${darkMode ? 'bg-slate-800 border-white/5 text-slate-400' : 'bg-slate-100 border-slate-200 text-slate-500'}`}>
+                  <User className="w-5 h-5" />
+                </div>
+              );
+            }
+
+            return (
+              <div key={idx} className={`flex gap-6 ${isAgent ? 'flex-row-reverse' : ''}`}>
+                 {iconBox}
+                 <div className={`flex-1 p-6 rounded-3xl border transition-all ${cardBg}`}>
+                    <div className="flex items-center justify-between mb-3">
+                       <span className={`text-[9px] font-black uppercase tracking-[0.2em] ${labelColor}`}>{labelText}</span>
+                       <span className="text-[9px] font-bold text-slate-500 opacity-50">12:45 PM</span>
+                    </div>
+                    <p className={`text-sm font-bold leading-relaxed whitespace-pre-line ${darkMode ? 'text-slate-300' : 'text-slate-900'}`}>{msg.text}</p>
+                 </div>
+              </div>
+            );
+          })}
         </div>
         
         <div className="flex flex-col gap-6">
           <div className={`p-6 rounded-3xl border transition-all ${darkMode ? 'bg-black/40 border-white/5' : 'bg-slate-50 border-slate-100 shadow-inner'}`}>
-             <div className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4 ml-1">Draft Internal Response</div>
+             <div className="flex gap-2 mb-4 border-b border-slate-500/10 pb-2">
+                <button
+                  onClick={() => setActiveDraftTab('reply')}
+                  className={`px-4 py-2 text-[10px] font-black uppercase tracking-wider rounded-xl transition-all border ${activeDraftTab === 'reply' ? (darkMode ? 'bg-indigo-600/20 border-indigo-500/30 text-indigo-400' : 'bg-indigo-50 border-indigo-100 text-indigo-600') : (darkMode ? 'border-transparent text-slate-500 hover:text-slate-300' : 'border-transparent text-slate-400 hover:text-slate-600')}`}
+                >
+                  Ответ клиенту
+                </button>
+                <button
+                  onClick={() => setActiveDraftTab('note')}
+                  className={`px-4 py-2 text-[10px] font-black uppercase tracking-wider rounded-xl transition-all border ${activeDraftTab === 'note' ? (darkMode ? 'bg-emerald-600/20 border-emerald-500/30 text-emerald-400' : 'bg-emerald-50 border-emerald-100 text-emerald-600') : (darkMode ? 'border-transparent text-slate-500 hover:text-slate-300' : 'border-transparent text-slate-400 hover:text-slate-600')}`}
+                >
+                  Внутренняя заметка
+                </button>
+             </div>
+             
              <div className="flex gap-4">
-                <textarea 
-                  className={`flex-1 bg-transparent border-none outline-none resize-none text-sm leading-relaxed font-bold ${darkMode ? 'text-slate-300 placeholder:text-slate-600' : 'text-slate-900 placeholder:text-slate-400'}`}
-                  placeholder={'Напишите сообщение клиенту...'}
-                  rows={2}
-                />
-                <div className="flex flex-col gap-2">
-                   <button className="p-4 bg-indigo-600 rounded-2xl text-white hover:bg-indigo-500 transition-all shadow-lg shadow-indigo-600/30 active:scale-95">
+                {activeDraftTab === 'reply' ? (
+                  <textarea 
+                    value={replyDraft}
+                    onChange={(e) => setReplyDraft(e.target.value)}
+                    className={`flex-1 bg-transparent border-none outline-none resize-none text-sm leading-relaxed font-bold ${darkMode ? 'text-slate-300 placeholder:text-slate-600' : 'text-slate-900 placeholder:text-slate-400'}`}
+                    placeholder={'Напишите ответ клиенту или вставьте ответ из OmniAI...'}
+                    rows={3}
+                  />
+                ) : (
+                  <textarea 
+                    value={noteDraft}
+                    onChange={(e) => setNoteDraft(e.target.value)}
+                    className={`flex-1 bg-transparent border-none outline-none resize-none text-sm leading-relaxed font-bold ${darkMode ? 'text-slate-300 placeholder:text-slate-600' : 'text-slate-900 placeholder:text-slate-400'}`}
+                    placeholder={'Добавьте внутреннюю заметку или вставьте рекомендации из OmniAI...'}
+                    rows={3}
+                  />
+                )}
+                <div className="flex flex-col gap-2 self-end">
+                   <button 
+                     onClick={() => {
+                       if (activeDraftTab === 'reply') {
+                         if (!replyDraft.trim()) return;
+                         setMessages(prev => [...prev, { role: 'agent', text: replyDraft }]);
+                         setReplyDraft('');
+                       } else {
+                         if (!noteDraft.trim()) return;
+                         setMessages(prev => [...prev, { role: 'note', text: noteDraft }]);
+                         setNoteDraft('');
+                       }
+                     }}
+                     className={`p-4 rounded-2xl text-white transition-all shadow-lg active:scale-95 ${activeDraftTab === 'reply' ? 'bg-indigo-600 hover:bg-indigo-500 shadow-indigo-600/30' : 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/30'}`}
+                   >
                       <Send className="w-5 h-5" />
                    </button>
                 </div>
@@ -487,9 +591,31 @@ export default function WidgetPreview({ darkMode, t, settings }: { darkMode: boo
                     <button className={`p-2 rounded-lg text-[9px] font-black flex items-center gap-1.5 transition-all ${darkMode ? 'hover:bg-white/10 text-slate-400' : 'hover:bg-white shadow-sm text-slate-500 border border-slate-200'}`}><Copy className="w-3 h-3" /> COPY</button>
                   </div>
                 </div>
-                <p className={`text-xs leading-relaxed mb-6 font-bold ${darkMode ? 'text-slate-200' : 'text-slate-900'}`}>
+                <p className={`text-xs leading-relaxed mb-4 font-bold ${darkMode ? 'text-slate-200' : 'text-slate-900'}`}>
                   {s.text}
                 </p>
+                <div className="flex gap-2 mb-4">
+                  <button 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setReplyDraft(prev => (prev ? prev + '\n\n' : '') + s.text);
+                      setActiveDraftTab('reply');
+                    }}
+                    className="flex-1 py-1.5 bg-indigo-600/10 hover:bg-indigo-600 hover:text-white border border-indigo-500/20 text-indigo-400 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all text-center"
+                  >
+                    Вставить в ответ
+                  </button>
+                  <button 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setNoteDraft(prev => (prev ? prev + '\n\n' : '') + s.text);
+                      setActiveDraftTab('note');
+                    }}
+                    className="flex-1 py-1.5 bg-emerald-600/10 hover:bg-emerald-600 hover:text-white border border-emerald-500/20 text-emerald-400 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all text-center"
+                  >
+                    Вставить в заметку
+                  </button>
+                </div>
                 <div className="flex items-center gap-3">
                   <div className={`flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-lg border ${darkMode ? 'bg-white/5 border-white/5 text-slate-500' : 'bg-white border-slate-100 text-slate-400 shadow-sm'}`}>
                     <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
