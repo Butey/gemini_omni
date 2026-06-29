@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { Send, Bot, User, CornerDownRight, Sparkles, Copy, ThumbsUp, ThumbsDown, Brain, Settings, ChevronDown, ChevronUp } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
 import { Suggestion, AppSettings } from '../types';
 
 export function WidgetUI({ darkMode, t, settings }: { darkMode: boolean, t: any, settings?: AppSettings | null }) {
@@ -168,13 +167,10 @@ export function WidgetUI({ darkMode, t, settings }: { darkMode: boolean, t: any,
         {!isCollapsed && (
           <>
             <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-6 mb-6">
-          <AnimatePresence>
             {chatHistory.map((msg, i) => (
-              <motion.div 
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
+              <div 
                 key={i} 
-                className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}
+                className={`flex flex-col transition-all duration-300 ${msg.role === 'user' ? 'items-end' : 'items-start'}`}
               >
                 <div className={`max-w-[85%] p-5 rounded-[2rem] text-sm font-bold leading-relaxed ${
                   msg.role === 'user' 
@@ -206,9 +202,8 @@ export function WidgetUI({ darkMode, t, settings }: { darkMode: boolean, t: any,
                     ))}
                   </div>
                 )}
-              </motion.div>
+              </div>
             ))}
-          </AnimatePresence>
           {loading && (
             <div className="flex gap-2 p-4">
               <span className="w-2 h-2 bg-indigo-500 rounded-full animate-bounce [animation-delay:-0.3s]" />
@@ -404,7 +399,7 @@ export default function WidgetPreview({ darkMode, t, settings }: { darkMode: boo
             disabled={loading}
             className="w-full py-5 bg-indigo-600/10 hover:bg-indigo-500 hover:text-white border border-indigo-500/20 text-indigo-400 rounded-2xl font-black text-xs flex items-center justify-center gap-3 transition-all uppercase tracking-[0.2em] active:scale-95 disabled:opacity-50"
           >
-            {loading ? <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1 }} className="w-5 h-5 border-2 border-indigo-400/30 border-t-indigo-400 rounded-full" /> : <Sparkles className="w-5 h-5" />}
+            {loading ? <div className="w-5 h-5 border-2 border-indigo-400/30 border-t-indigo-400 rounded-full animate-spin" /> : <Sparkles className="w-5 h-5" />}
             {t.generate_rec}
           </button>
           <div className="text-[9px] font-bold text-slate-500 text-center opacity-40 uppercase tracking-[0.1em]">
@@ -430,7 +425,7 @@ export default function WidgetPreview({ darkMode, t, settings }: { darkMode: boo
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          <AnimatePresence mode="popLayout">
+          <div className="space-y-6">
             {suggestions.length === 0 && !loading && (
               <div className="flex flex-col items-center justify-center h-full text-center px-10">
                 <div className={`w-20 h-20 rounded-full flex items-center justify-center mb-8 border-2 ${darkMode ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-100 shadow-xl shadow-slate-200/50'}`}>
@@ -449,11 +444,8 @@ export default function WidgetPreview({ darkMode, t, settings }: { darkMode: boo
             )}
 
             {suggestions.map((s, i) => (
-              <motion.div
+              <div
                 key={s.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.1 }}
                 className={`p-6 rounded-[1.5rem] border transition-all cursor-pointer group relative overflow-hidden ${darkMode ? 'border-white/10 bg-white/5 hover:bg-indigo-500/10 hover:border-indigo-500/30' : 'border-slate-100 bg-slate-50 hover:bg-indigo-50 hover:border-indigo-500/20 shadow-sm'}`}
               >
                 <div className="flex items-center justify-between mb-4">
@@ -476,9 +468,9 @@ export default function WidgetPreview({ darkMode, t, settings }: { darkMode: boo
                   </div>
                 </div>
                 <div className="absolute left-0 bottom-0 top-0 w-1 bg-indigo-600 opacity-30" />
-              </motion.div>
+              </div>
             ))}
-          </AnimatePresence>
+          </div>
         </div>
 
         <div className={`p-6 border-t ${darkMode ? 'border-white/10 bg-black/40' : 'border-slate-100 bg-slate-50/50'}`}>
