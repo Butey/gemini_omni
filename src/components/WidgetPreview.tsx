@@ -6,7 +6,7 @@ export function WidgetUI({ darkMode, t, settings }: { darkMode: boolean, t: any,
   const [loading, setLoading] = useState(false);
   const [input, setInput] = useState('');
   const [chatHistory, setChatHistory] = useState<{ role: 'ai' | 'user', text: string, suggestions?: Suggestion[] }[]>([]);
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(true);
   const hasRequestedInit = React.useRef(false);
 
   // Send resize event to parent window when collapsed state changes
@@ -113,6 +113,16 @@ export function WidgetUI({ darkMode, t, settings }: { darkMode: boolean, t: any,
       handleSend('Проанализируй этот тикет');
     }
   }, []);
+
+  useEffect(() => {
+    const handleGlobalMouseUp = () => {
+      if (typeof window !== 'undefined' && window.parent && !isStandalone) {
+        window.parent.postMessage({ type: 'OMNIDESK_DRAG_END' }, '*');
+      }
+    };
+    window.addEventListener('mouseup', handleGlobalMouseUp);
+    return () => window.removeEventListener('mouseup', handleGlobalMouseUp);
+  }, [isStandalone]);
 
   useEffect(() => {
     if (typeof window !== 'undefined' && window.parent && !isStandalone) {

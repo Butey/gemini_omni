@@ -220,13 +220,13 @@ async function fetchOmnideskTicketContext(caseNumber: string) {
       } else if (msgsData._embedded?.messages) {
         msgsArray = msgsData._embedded.messages;
       } else if (typeof msgsData === 'object' && msgsData !== null) {
-        // Handle {"0": {"message": ...}, "1": ...}
-        msgsArray = Object.values(msgsData);
+        msgsArray = Object.values(msgsData).filter((v: any) => v && typeof v === 'object' && v.message);
       }
       
       description = msgsArray.map((m: any) => {
         const msg = m.message || m;
-        return `${msg.user_id ? 'CLIENT' : 'STAFF'}: ${msg.content_html ? msg.content_html.replace(/<[^>]+>/g, '') : msg.content}`;
+        const text = msg.content_html ? msg.content_html.replace(/<[^>]+>/g, '') : (msg.content || '');
+        return `${msg.user_id ? 'CLIENT' : 'STAFF'}: ${text}`;
       }).join('\n\n');
     }
     
