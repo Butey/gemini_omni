@@ -374,22 +374,37 @@ $(function() {
     dragOverlay.style.background = 'transparent';
 
     // --- ЛОГИКА ПЕРЕТАСКИВАНИЯ ---
+    let hasMoved = false;
+
     function drag(e) {
       if (isDragging) {
         e.preventDefault();
         const dx = e.clientX - startX;
         const dy = e.clientY - startY;
+        if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+          hasMoved = true;
+        }
         container.style.left = (startLeft + dx) + 'px';
         container.style.top = (startTop + dy) + 'px';
       }
     }
 
-    function dragEnd(e) {
-      isDragging = false;
-      iframe.style.pointerEvents = 'auto'; 
-      dragOverlay.style.display = 'none';
-      document.removeEventListener('mousemove', drag);
-      document.removeEventListener('mouseup', dragEnd);
+    function dragEnd() {
+      if (isDragging) {
+        isDragging = false;
+        iframe.style.pointerEvents = 'auto'; 
+        dragOverlay.style.display = 'none';
+        document.removeEventListener('mousemove', drag);
+        document.removeEventListener('mouseup', dragEnd);
+        
+        console.log('AI Widget Integration: Drag finished', { hasMoved });
+        
+        // Notify the iframe that drag is finished and whether it was a small click
+        iframe.contentWindow.postMessage({
+          type: 'OMNIDESK_DRAG_END',
+          wasClick: !hasMoved
+        }, '*');
+      }
     }
 
     // --- ЛОГИКА МАСШТАБИРОВАНИЯ ---
@@ -469,14 +484,10 @@ $(function() {
         console.log('AI Widget Integration: Received message', event.data);
       }
       
-      if (event.data && event.data.type === 'OMNIDESK_DRAG_END') {
-        if (isDragging) dragEnd();
-      }
-      
       if (event.data && event.data.type === 'OMNIDESK_DRAG_START') {
         isDragging = true;
+        hasMoved = false;
         const rect = container.getBoundingClientRect();
-        
         switchToLeftTop(rect);
         
         startX = event.data.clientX + rect.left;
@@ -484,12 +495,14 @@ $(function() {
         startLeft = rect.left;
         startTop = rect.top;
         
-        iframe.style.pointerEvents = 'none'; // Отключаем события iframe при перетаскивании
+        iframe.style.pointerEvents = 'none'; // Prevent iframe from stealing mouse events during drag
         dragOverlay.style.display = 'block';
         dragOverlay.style.cursor = 'move';
         
         document.addEventListener('mousemove', drag);
         document.addEventListener('mouseup', dragEnd);
+        
+        console.log('AI Widget Integration: Drag initiated', { startX, startY, startLeft, startTop });
       }
 
       if (event.data && event.data.type === 'OMNIDESK_RESIZE_WIDGET') {

@@ -8,6 +8,20 @@ export function WidgetUI({ darkMode, t, settings }: { darkMode: boolean, t: any,
   const [chatHistory, setChatHistory] = useState<{ role: 'ai' | 'user', text: string, suggestions?: Suggestion[] }[]>([]);
   const [isCollapsed, setIsCollapsed] = useState(true);
   const hasRequestedInit = React.useRef(false);
+  const [isDragging, setIsDragging] = useState(false);
+
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data && event.data.type === 'OMNIDESK_DRAG_END') {
+        setIsDragging(false);
+        if (event.data.wasClick) {
+          setIsCollapsed(prev => !prev);
+        }
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
 
   // Send resize event to parent window when collapsed state changes
   useEffect(() => {
@@ -138,11 +152,13 @@ export function WidgetUI({ darkMode, t, settings }: { darkMode: boolean, t: any,
         <div 
           className={`flex items-center justify-between shrink-0 ${isCollapsed ? '' : 'mb-6'} cursor-grab active:cursor-grabbing`}
           onMouseDown={(e) => {
-            // Only initiate drag if left clicking and not clicking a button
+            // Only initiate drag if left clicking and not clicking a button or link
             if (e.button !== 0) return;
             const target = e.target as HTMLElement;
-            if (target.closest('button') || target.closest('a') || target.closest('[data-no-drag="true"]')) return;
+            if (target.closest('button') || target.closest('a')) return;
             
+            setIsDragging(true);
+
             if (typeof window !== 'undefined' && window.parent && !isStandalone) {
               window.parent.postMessage({
                 type: 'OMNIDESK_DRAG_START',
@@ -151,12 +167,19 @@ export function WidgetUI({ darkMode, t, settings }: { darkMode: boolean, t: any,
               }, '*');
             }
           }}
+          onClick={(e) => {
+            if (isStandalone) {
+              const target = e.target as HTMLElement;
+              if (target.closest('button') || target.closest('a')) return;
+              setIsCollapsed(prev => !prev);
+            }
+          }}
         >
           <div className="flex items-center gap-3 pointer-events-none">
-             <div data-no-drag="true" className="w-10 h-10 rounded-xl bg-indigo-500 flex items-center justify-center shadow-lg shadow-indigo-500/40 pointer-events-auto cursor-pointer" onClick={() => setIsCollapsed(!isCollapsed)}>
+             <div className="w-10 h-10 rounded-xl bg-indigo-500 flex items-center justify-center shadow-lg shadow-indigo-500/40 pointer-events-auto">
                 <Brain className="w-5 h-5 text-white" />
              </div>
-             <div data-no-drag="true" className="select-none pointer-events-auto cursor-pointer" onClick={() => setIsCollapsed(!isCollapsed)}>
+             <div className="select-none pointer-events-auto">
                 <h3 className={`font-black text-lg italic tracking-tight leading-none ${darkMode ? 'text-white' : 'text-slate-900'}`}>{t.ai_assistant}</h3>
                 <div className="flex items-center gap-2 mt-1.5">
                    <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
