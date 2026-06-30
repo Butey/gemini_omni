@@ -316,7 +316,7 @@ $(function() {
     const container = document.createElement('div');
     container.style.position = 'fixed';
     container.style.bottom = '20px';
-    container.style.right = '20px';
+    container.style.left = '20px';
     container.style.width = '380px';
     container.style.height = '96px'; // Starts collapsed
     container.style.zIndex = '999999';

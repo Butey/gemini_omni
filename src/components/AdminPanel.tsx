@@ -234,6 +234,7 @@ export default function AdminPanel({
       { key: 'model_name', label: 'Model Name', type: 'select', options: ['gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-2.5-flash', 'gemini-3.0-flash', 'gemma-4-26b'], help: t.desc_model_name },
       { key: 'custom_models', label: t.custom_models || 'Custom Models', type: 'custom_models_manager', help: t.desc_custom_models },
       { key: 'api_key', label: 'API Key', type: 'text', help: t.desc_api_key },
+      { key: 'api_key_pool', label: t.label_api_key_pool || 'API Key Pool', type: 'textarea', help: t.desc_api_key_pool },
       { key: 'system_prompt', label: 'Global Instructions', type: 'textarea', help: t.desc_prompt },
     ]},
     { title: t.params_config, icon: Activity, fields: [

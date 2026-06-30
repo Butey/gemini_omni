@@ -45,6 +45,7 @@ let settings: AppSettings = {
   model_name: "gemini-3.5-flash",
   custom_models: "",
   api_key: process.env.GEMINI_API_KEY || "",
+  api_key_pool: "",
   system_prompt: "You are the iRidi Knowledge Assistant. Your role is to help both iRidi employees and external users understand and work with iRidi products.\n\nSOURCES AND CONTEXT:\nYou must answer questions ONLY using verified information from the official iRidi documentation, which includes:\n- dev.iridi.com\n- doc.iridi.com\n- devbms.iridi.com/scada\n- The provided local Knowledge Base articles, linked files, web documents, and custom materials.\n\nSTRICT RULES OF RELIABILITY:\n- Never invent features or technical details.\n- Never speculate.\n- If information is unavailable or uncertain in the provided context (neither in the official websites nor in the local Knowledge Base), you must explicitly state: \"This information is not available in the known documentation.\" It is always better to report that information is not found than to invent it.\n\nRESPONSE FORMAT AND STYLE:\n- Prefer concise, structured responses.\n- Use step-by-step instructions where applicable.\n- Include configuration examples and code blocks if they are documented.\n- Adapt the depth of your explanation depending on the user.\n- Always reply in Russian unless requested otherwise.",
   temperature: 0.7,
   top_p: 0.95,
@@ -129,6 +130,41 @@ const saveData = () => {
 };
 
 loadData();
+
+// API Key Rotation Helpers
+let lastUsedKeyIndex = 0;
+
+const maskApiKey = (key: string): string => {
+  if (!key) return "N/A";
+  if (key.length <= 10) return "***";
+  return `${key.substring(0, 6)}...${key.substring(key.length - 4)}`;
+};
+
+const getApiKeysPool = (): string[] => {
+  const keys: string[] = [];
+  
+  // 1. Primary key
+  const primaryKey = settings.api_key || process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || "";
+  if (primaryKey && primaryKey.trim()) {
+    keys.push(primaryKey.trim());
+  }
+  
+  // 2. Backup pool keys
+  if (settings.api_key_pool) {
+    const backupKeys = settings.api_key_pool
+      .split(/[\n,;]+/)
+      .map(k => k.trim())
+      .filter(k => k.length > 0);
+      
+    for (const key of backupKeys) {
+      if (!keys.includes(key)) {
+        keys.push(key);
+      }
+    }
+  }
+  
+  return keys;
+};
 
 // Gemini Initialization
 let ai = new GoogleGenAI({
@@ -469,65 +505,102 @@ app.post("/api/chat", async (req, res) => {
       } catch (e) {}
     }
 
-    const currentApiKey = isCustom && customModelConfig.api_key ? customModelConfig.api_key : (settings.api_key || process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || "");
-    if (!currentApiKey || currentApiKey.trim() === "") {
+    const pool = getApiKeysPool();
+    if (pool.length === 0) {
       return res.status(400).json({ error: "API key is not configured. Please set it in the Settings panel or in your environment variables." });
     }
 
     let responseText = '{}';
-    try {
-      if (isCustom && customModelConfig) {
-        const endpoint = customModelConfig.base_url.replace(/\/$/, '') + '/chat/completions';
-        const resOpenAI = await fetch(endpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${currentApiKey}`
-          },
-          body: JSON.stringify({
-            model: customModelConfig.model_id,
-            messages: [{ role: 'user', content: prompt }],
-            response_format: { type: 'json_object' }
-          }),
-          signal: AbortSignal.timeout(60000)
-        });
-        if (!resOpenAI.ok) {
-           const errBody = await resOpenAI.text();
-           throw new Error(`OpenAI-compatible API Error: ${resOpenAI.status} - ${errBody}`);
-        }
-        const dataOpenAI = await resOpenAI.json();
-        responseText = dataOpenAI.choices?.[0]?.message?.content || '{}';
-      } else {
-        let response;
-        try {
-          response = await ai.models.generateContent({
-            model: settings.model_name,
-            contents: prompt,
-            config: {
-              responseMimeType: 'application/json',
+    let success = false;
+    let lastError: any = null;
+
+    const startIndex = lastUsedKeyIndex % pool.length;
+    lastUsedKeyIndex = (startIndex + 1) % pool.length;
+
+    for (let i = 0; i < pool.length; i++) {
+      const currentIdx = (startIndex + i) % pool.length;
+      const activeKey = pool[currentIdx];
+      const masked = maskApiKey(activeKey);
+      
+      console.log(`[Rotation] Attempting LLM call using key index ${currentIdx} (${masked})`);
+      
+      try {
+        if (isCustom && customModelConfig) {
+          const endpoint = customModelConfig.base_url.replace(/\/$/, '') + '/chat/completions';
+          const resOpenAI = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${activeKey}`
+            },
+            body: JSON.stringify({
+              model: customModelConfig.model_id,
+              messages: [{ role: 'user', content: prompt }],
+              response_format: { type: 'json_object' }
+            }),
+            signal: AbortSignal.timeout(60000)
+          });
+          
+          if (!resOpenAI.ok) {
+            const errBody = await resOpenAI.text();
+            throw new Error(`OpenAI-compatible API Error: ${resOpenAI.status} - ${errBody}`);
+          }
+          
+          const dataOpenAI = await resOpenAI.json();
+          responseText = dataOpenAI.choices?.[0]?.message?.content || '{}';
+          success = true;
+        } else {
+          const activeAi = new GoogleGenAI({
+            apiKey: activeKey,
+            httpOptions: {
+              headers: {
+                'User-Agent': 'aistudio-build',
+              }
             }
           });
-        } catch (apiError: any) {
-          if (apiError.message && (apiError.message.includes("API Key not found") || apiError.message.includes("API key not valid"))) {
-            throw new Error("The Gemini API key currently configured is invalid or has been revoked. Please check your AI Studio Secrets or the Settings panel and provide a new, valid API key.");
-          }
-          if (apiError.message && (apiError.message.includes("high demand") || apiError.message.includes("quota") || apiError.message.includes("429")) && settings.model_name === 'gemini-3.5-flash') {
-            console.log("gemini-3.5-flash is experiencing high demand or quota limits. Falling back to gemini-2.5-flash...");
-            response = await ai.models.generateContent({
-              model: 'gemini-2.5-flash',
+          
+          let response;
+          try {
+            response = await activeAi.models.generateContent({
+              model: settings.model_name,
               contents: prompt,
               config: {
                 responseMimeType: 'application/json',
               }
             });
-          } else {
-            throw apiError;
+          } catch (apiError: any) {
+            if (apiError.message && (apiError.message.includes("API Key not found") || apiError.message.includes("API key not valid"))) {
+              throw new Error("The Gemini API key currently configured is invalid or has been revoked.");
+            }
+            if (apiError.message && (apiError.message.includes("high demand") || apiError.message.includes("quota") || apiError.message.includes("429")) && settings.model_name === 'gemini-3.5-flash') {
+              console.log("[Rotation] gemini-3.5-flash is experiencing high demand or quota limits. Falling back to gemini-2.5-flash...");
+              response = await activeAi.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: prompt,
+                config: {
+                  responseMimeType: 'application/json',
+                }
+              });
+            } else {
+              throw apiError;
+            }
           }
+          responseText = response.text || '{}';
+          success = true;
         }
-        responseText = response.text || '{}';
+
+        if (success) {
+          console.log(`[Rotation] LLM call succeeded with key index ${currentIdx} (${masked})`);
+          break;
+        }
+      } catch (err: any) {
+        lastError = err;
+        console.error(`[Rotation] Error with key index ${currentIdx} (${masked}):`, err.message || err);
       }
-    } catch (apiError: any) {
-       throw apiError;
+    }
+
+    if (!success) {
+      throw lastError || new Error("All API keys in the pool failed to generate content.");
     }
 
     let data;

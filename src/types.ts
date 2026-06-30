@@ -50,6 +50,7 @@ export interface AppSettings {
   model_name: string;
   custom_models?: string;
   api_key: string;
+  api_key_pool?: string;
   system_prompt: string;
   temperature: number;
   top_p: number;
