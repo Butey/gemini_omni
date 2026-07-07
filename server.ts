@@ -604,16 +604,33 @@ app.post("/api/chat", async (req, res) => {
     }
 
     let data;
+    let cleanText = (responseText || '{}').trim();
     try {
-      let cleanText = (responseText || '{}').trim();
-      if (cleanText.startsWith('```json')) cleanText = cleanText.substring(7);
-      else if (cleanText.startsWith('```')) cleanText = cleanText.substring(3);
-      if (cleanText.endsWith('```')) cleanText = cleanText.slice(0, -3);
-      data = JSON.parse(cleanText.trim() || '{}');
+      // 1. Strip thought/reasoning tags (including unclosed tags)
+      cleanText = cleanText.replace(/<(thought|thinking|reasoning|cot)>[\s\S]*?<\/\1>/gi, '');
+      cleanText = cleanText.replace(/<(thought|thinking|reasoning|cot)>[\s\S]*/gi, '');
+      cleanText = cleanText.trim();
+      
+      // 2. Strip markdown code blocks
+      let jsonText = cleanText;
+      if (jsonText.startsWith('```json')) jsonText = jsonText.substring(7);
+      else if (jsonText.startsWith('```')) jsonText = jsonText.substring(3);
+      if (jsonText.endsWith('```')) jsonText = jsonText.slice(0, -3);
+      jsonText = jsonText.trim();
+      
+      // 3. Extract JSON object boundary
+      const firstBrace = jsonText.indexOf('{');
+      const lastBrace = jsonText.lastIndexOf('}');
+      if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+        jsonText = jsonText.substring(firstBrace, lastBrace + 1);
+      }
+      
+      data = JSON.parse(jsonText || '{}');
     } catch (parseError) {
       console.error('Failed to parse LLM response as JSON:', responseText);
+      // Clean up the fallback text too, so we don't show the technical thought block to the user
       data = {
-        reply: responseText,
+        reply: cleanText || responseText,
         suggestions: []
       };
     }
