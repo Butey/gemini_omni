@@ -21,7 +21,11 @@ export default defineConfig(() => {
     build: {
       sourcemap: false,
       reportCompressedSize: false,
-      chunkSizeWarningLimit: 1000
+      chunkSizeWarningLimit: 1000,
+      minify: 'esbuild' as const,
+      rollupOptions: {
+        maxParallelFileOps: 3
+      }
     },
   };
 });
