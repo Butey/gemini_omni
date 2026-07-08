@@ -59,48 +59,24 @@ export function WidgetUI({ darkMode, t, settings }: { darkMode: boolean, t: any,
       }, '*');
     }
 
+    // 2. Clipboard fallback & standalone copy
+    try {
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(text);
+      }
+    } catch (err) {
+      console.warn('Failed to copy to clipboard:', err);
+    }
+
     const btn = document.activeElement as HTMLElement;
     const originalText = btn ? btn.innerText : '';
     if (btn) {
-      btn.innerText = 'Отправка...';
+      btn.innerText = target === 'message' ? 'Вставлено в ответ!' : 'Вставлено в заметку!';
       btn.style.pointerEvents = 'none';
-    }
-
-    try {
-      const endpoint = target === 'message' 
-        ? `/api/omnidesk/cases/${caseNumber}/messages` 
-        : `/api/omnidesk/cases/${caseNumber}/notes`;
-      
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: text })
-      });
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Ошибка API Omnidesk');
-      }
-
-      if (btn) {
-        btn.innerText = target === 'message' ? 'В ответ отправлено!' : 'В заметку добавлено!';
-      }
-    } catch (error: any) {
-      console.error('Omnidesk API send error:', error);
-      if (btn) {
-        btn.innerText = 'Ошибка отправки!';
-      }
-      // Clipboard fallback in case of errors
-      if (isStandalone) {
-        navigator.clipboard.writeText(text);
-      }
-    } finally {
-      if (btn) {
-        setTimeout(() => {
-          btn.innerText = originalText;
-          btn.style.pointerEvents = 'auto';
-        }, 3000);
-      }
+      setTimeout(() => {
+        btn.style.pointerEvents = 'auto';
+        btn.innerText = originalText;
+      }, 2000);
     }
   };
 
