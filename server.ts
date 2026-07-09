@@ -458,7 +458,29 @@ app.post("/api/chat", async (req, res) => {
                 cleanContent = pageData.html.replace(/<[^>]*>?/gm, '');
               }
               let pageUrl = '';
-              if (pageData.url) {
+              let bookSlug = '';
+              if (pageData.book_id) {
+                try {
+                  const bookRes = await fetch(`${settings.bookstack_url.replace(/\/$/, '')}/api/books/${pageData.book_id}`, {
+                    headers: {
+                      'Authorization': `Token ${settings.bookstack_token_id}:${settings.bookstack_token_secret}`
+                    },
+                    signal: AbortSignal.timeout(5000)
+                  });
+                  if (bookRes.ok) {
+                    const bookData = await bookRes.json();
+                    if (bookData && bookData.slug) {
+                      bookSlug = bookData.slug;
+                    }
+                  }
+                } catch (e) {
+                  console.error("Failed to fetch book slug dynamically during search:", e);
+                }
+              }
+
+              if (bookSlug) {
+                pageUrl = `${settings.bookstack_url.replace(/\/$/, '')}/books/${bookSlug}/page/${pageData.slug || pageData.id}`;
+              } else if (pageData.url) {
                 try {
                   const urlObj = new URL(pageData.url);
                   pageUrl = `${settings.bookstack_url.replace(/\/$/, '')}${urlObj.pathname}`;
@@ -970,10 +992,46 @@ app.post("/api/admin/bookstack/sync", requireAuth, async (req, res) => {
     // Remove old bookstack items from local KB
     knowledgeBase.splice(0, knowledgeBase.length, ...knowledgeBase.filter(item => !item.tags.includes('bookstack')));
     
+    // Pre-fetch all books to build a map of book_id -> book_slug
+    const bookIdToSlug: Record<number, string> = {};
+    try {
+      let booksOffset = 0;
+      let booksLimit = 100;
+      let hasMoreBooks = true;
+      while (hasMoreBooks) {
+        const booksResponse = await fetch(`${url.replace(/\/$/, '')}/api/books?count=${booksLimit}&offset=${booksOffset}`, {
+          headers: {
+            'Authorization': `Token ${id}:${secret}`
+          }
+        });
+        if (!booksResponse.ok) {
+          console.error(`Failed to fetch BookStack books: ${booksResponse.statusText}`);
+          break;
+        }
+        const booksData = await booksResponse.json();
+        const booksList = booksData.data || [];
+        for (const book of booksList) {
+          if (book.id && book.slug) {
+            bookIdToSlug[book.id] = book.slug;
+          }
+        }
+        if (booksOffset + booksLimit >= (booksData.total || 0) || booksList.length === 0) {
+          hasMoreBooks = false;
+        } else {
+          booksOffset += booksLimit;
+        }
+      }
+    } catch (err) {
+      console.error("Error pre-fetching BookStack books for slug map:", err);
+    }
+
     // Store lightweight indices (title + link only)
     for (const page of allPages) {
       let pageUrl = '';
-      if (page.url) {
+      const bookSlug = bookIdToSlug[page.book_id];
+      if (bookSlug) {
+        pageUrl = `${url.replace(/\/$/, '')}/books/${bookSlug}/page/${page.slug || page.id}`;
+      } else if (page.url) {
         try {
           const urlObj = new URL(page.url);
           pageUrl = `${url.replace(/\/$/, '')}${urlObj.pathname}`;
