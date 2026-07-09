@@ -6,6 +6,30 @@ This guide explains how to deploy the application on a Linux VPS (Ubuntu/Debian 
 - VPS with Docker and Docker Compose installed.
 - Domain name with A-record pointing to your VPS IP (optional, for SSL).
 
+> ⚠️ **CRITICAL FOR 1GB RAM VPS**: 
+> If your VPS has only 1GB RAM, compiling TypeScript and assets will fail with Out-Of-Memory (OOM) errors. You **MUST** enable a SWAP file (file of virtual memory) before building. Run the following commands as root to add 2GB of SWAP:
+> ```bash
+> sudo fallocate -l 2G /swapfile
+> sudo chmod 600 /swapfile
+> sudo mkswap /swapfile
+> sudo swapon /swapfile
+> echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+> ```
+> 
+> **Как безопасно удалить файл подкачки после успешной сборки (опционально):**
+> По умолчанию созданный файл подкачки остаётся активным в системе (в том числе после перезагрузки благодаря записи в `/etc/fstab`). Если вы хотите отключить его и вернуть 2 ГБ дискового пространства после завершения сборки, выполните следующие команды от имени root:
+> ```bash
+> # 1. Отключить использование файла подкачки
+> sudo swapoff /swapfile
+> 
+> # 2. Удалить файл с диска
+> sudo rm /swapfile
+> 
+> # 3. Удалить запись об автоматическом монтировании из /etc/fstab
+> sudo sed -i '\|/swapfile|d' /etc/fstab
+> ```
+
+
 ## Option 1: Docker Deployment (Recommended)
 
 1. **Clone/Upload Files**:
