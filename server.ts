@@ -457,7 +457,18 @@ app.post("/api/chat", async (req, res) => {
               if (!pageData.markdown && pageData.html) {
                 cleanContent = pageData.html.replace(/<[^>]*>?/gm, '');
               }
-              const pageUrl = `${settings.bookstack_url.replace(/\/$/, '')}/books/${pageData.book_id}/page/${pageData.slug || pageData.id}`;
+              let pageUrl = '';
+              if (pageData.url) {
+                try {
+                  const urlObj = new URL(pageData.url);
+                  pageUrl = `${settings.bookstack_url.replace(/\/$/, '')}${urlObj.pathname}`;
+                } catch (e) {
+                  const path = pageData.url.startsWith('/') ? pageData.url : `/${pageData.url}`;
+                  pageUrl = `${settings.bookstack_url.replace(/\/$/, '')}${path}`;
+                }
+              } else {
+                pageUrl = `${settings.bookstack_url.replace(/\/$/, '')}/books/${pageData.book_id}/page/${pageData.slug || pageData.id}`;
+              }
               dynamicKnowledge += `- BookStack Article "${pageData.name}" (Direct URL: ${pageUrl}): ${cleanContent.substring(0, 2000)}\n`;
             }
           }
@@ -961,10 +972,23 @@ app.post("/api/admin/bookstack/sync", requireAuth, async (req, res) => {
     
     // Store lightweight indices (title + link only)
     for (const page of allPages) {
+      let pageUrl = '';
+      if (page.url) {
+        try {
+          const urlObj = new URL(page.url);
+          pageUrl = `${url.replace(/\/$/, '')}${urlObj.pathname}`;
+        } catch (e) {
+          const path = page.url.startsWith('/') ? page.url : `/${page.url}`;
+          pageUrl = `${url.replace(/\/$/, '')}${path}`;
+        }
+      } else {
+        pageUrl = `${url.replace(/\/$/, '')}/books/${page.book_id}/page/${page.slug || page.id}`;
+      }
+
       knowledgeBase.push({
         id: `bookstack-${page.id}`,
         title: page.name,
-        content: `BookStack Article ID: ${page.id}. Read more at: ${url.replace(/\/$/, '')}/books/${page.book_id}/page/${page.slug || page.id}`,
+        content: `BookStack Article ID: ${page.id}. Read more at: ${pageUrl}`,
         tags: ['bookstack']
       });
     }
