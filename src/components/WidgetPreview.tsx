@@ -2,6 +2,77 @@ import React, { useState, useEffect } from 'react';
 import { Send, Bot, User, CornerDownRight, Sparkles, Copy, ThumbsUp, ThumbsDown, Brain, Settings, ChevronDown, ChevronUp } from 'lucide-react';
 import { Suggestion, AppSettings } from '../types';
 
+// Strips markdown characters so plain-text destinations like Omnidesk input fields don't get polluted
+const stripMarkdown = (text: string): string => {
+  if (!text) return '';
+  return text
+    // Remove bold/italic formatting
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/__([^_]+)__/g, '$1')
+    .replace(/_([^_]+)_/g, '$1')
+    // Remove inline code block
+    .replace(/`([^`]+)`/g, '$1')
+    // Remove headers (e.g. ### Header)
+    .replace(/^(#{1,6})\s*(.+)$/gm, '$2')
+    // Remove lists markers (e.g. * Item, - Item, but keep bullet structure)
+    .replace(/^[-*+]\s+(.+)$/gm, '• $1')
+    // Remove links [Text](URL) -> Text
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .trim();
+};
+
+const parseInlineStyles = (text: string) => {
+  const boldParts = text.split(/(\*\*[^*]+\*\*)/g);
+  return boldParts.map((part, partIdx) => {
+    if (part.startsWith('**') && part.endsWith('**')) {
+      return <strong key={partIdx} className="font-extrabold text-indigo-500 dark:text-indigo-400">{part.slice(2, -2)}</strong>;
+    }
+    const italicParts = part.split(/(\*[^*]+\*)/g);
+    return italicParts.map((subPart, subPartIdx) => {
+      if (subPart.startsWith('*') && subPart.endsWith('*')) {
+        return <em key={subPartIdx} className="italic">{subPart.slice(1, -1)}</em>;
+      }
+      return subPart;
+    });
+  });
+};
+
+const renderSimpleMarkdown = (text: string) => {
+  if (!text) return null;
+  const lines = text.split('\n');
+  return lines.map((line, idx) => {
+    const headerMatch = line.match(/^(#{1,6})\s+(.+)$/);
+    if (headerMatch) {
+      const level = headerMatch[1].length;
+      const content = headerMatch[2];
+      if (level === 1) return <h1 key={idx} className="text-lg font-black mt-3 mb-1.5">{parseInlineStyles(content)}</h1>;
+      if (level === 2) return <h2 key={idx} className="text-base font-black mt-2.5 mb-1">{parseInlineStyles(content)}</h2>;
+      return <h3 key={idx} className="text-sm font-black mt-2 mb-1">{parseInlineStyles(content)}</h3>;
+    }
+
+    const listMatch = line.match(/^[-*+]\s+(.+)$/);
+    if (listMatch) {
+      return (
+        <div key={idx} className="flex gap-2 pl-2 my-1 align-top">
+          <span className="text-indigo-500">•</span>
+          <span>{parseInlineStyles(listMatch[1])}</span>
+        </div>
+      );
+    }
+
+    if (line.trim() === '') {
+      return <div key={idx} className="h-2" />;
+    }
+
+    return (
+      <p key={idx} className="my-1 text-sm font-bold leading-relaxed">
+        {parseInlineStyles(line)}
+      </p>
+    );
+  });
+};
+
 export function WidgetUI({ darkMode, t, settings }: { darkMode: boolean, t: any, settings?: AppSettings | null }) {
   const [loading, setLoading] = useState(false);
   const [input, setInput] = useState('');
@@ -50,19 +121,21 @@ export function WidgetUI({ darkMode, t, settings }: { darkMode: boolean, t: any,
 
   // Messaging Bridge: Send content to Omnidesk Parent and API
   const applyDraft = async (text: string, target: 'message' | 'note' = 'message') => {
+    const cleanText = stripMarkdown(text);
+
     // 1. Instant local DOM injection via postMessage
     if (typeof window !== 'undefined' && window.parent && !isStandalone) {
       window.parent.postMessage({
         type: 'OMNIDESK_INJECT_RESPONSE',
         target: target,
-        content: text
+        content: cleanText
       }, '*');
     }
 
     // 2. Clipboard fallback & standalone copy
     try {
       if (navigator.clipboard) {
-        await navigator.clipboard.writeText(text);
+        await navigator.clipboard.writeText(cleanText);
       }
     } catch (err) {
       console.warn('Failed to copy to clipboard:', err);
@@ -215,7 +288,7 @@ export function WidgetUI({ darkMode, t, settings }: { darkMode: boolean, t: any,
                     ? (darkMode ? 'bg-indigo-600 text-white' : 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20')
                     : (darkMode ? 'bg-white/5 border border-white/10 text-slate-200' : 'bg-slate-50 border border-slate-100 text-slate-900')
                 }`}>
-                  {msg.text}
+                  {msg.role === 'user' ? msg.text : renderSimpleMarkdown(msg.text)}
                 </div>
                 
                 {msg.suggestions && msg.suggestions.length > 0 && (
@@ -229,7 +302,9 @@ export function WidgetUI({ darkMode, t, settings }: { darkMode: boolean, t: any,
                             <span className="text-[9px] font-black uppercase tracking-widest text-indigo-500">{s.type}</span>
                             <span className="text-[9px] font-bold text-slate-500 opacity-50">{s.confidence}% Match</span>
                          </div>
-                         <p className={`text-xs font-bold leading-relaxed mb-4 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>{s.text}</p>
+                         <div className={`text-xs font-bold leading-relaxed mb-4 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                           {renderSimpleMarkdown(s.text)}
+                         </div>
                          <div className="flex gap-2">
                            <button 
                              onClick={() => applyDraft(s.text, 'message')}
