@@ -70,10 +70,12 @@ export default defineConfig(() => {
     build: {
       sourcemap: false,
       reportCompressedSize: false,
-      chunkSizeWarningLimit: 1000,
+      chunkSizeWarningLimit: 2000,
       minify: 'esbuild' as const,
+      cssMinify: true,
       rollupOptions: {
-        maxParallelFileOps: 3
+        maxParallelFileOps: 1,
+        cache: false,
       }
     },
   };

@@ -35,6 +35,37 @@ export default function KnowledgeBase({ darkMode, t }: { darkMode: boolean, t: a
   const [viewingItem, setViewingItem] = useState<KnowledgeBaseItem | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  // Ticket-based learning states
+  const [showLearningPanel, setShowLearningPanel] = useState(false);
+  const [learningPeriod, setLearningPeriod] = useState(30);
+  const [learningLimit, setLearningLimit] = useState(5);
+  const [isLearning, setIsLearning] = useState(false);
+  const [learningResult, setLearningResult] = useState<{ success: boolean; count?: number; error?: string } | null>(null);
+  const [filterType, setFilterType] = useState<'all' | 'articles' | 'tickets'>('all');
+
+  const handleStartLearning = async () => {
+    setIsLearning(true);
+    setLearningResult(null);
+    try {
+      const res = await apiFetch('/api/admin/tickets/learn', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ periodDays: learningPeriod, limit: learningLimit })
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || 'Failed to trigger learning');
+      }
+      const data = await res.json();
+      setLearningResult({ success: true, count: data.count });
+      fetchItems();
+    } catch (err: any) {
+      setLearningResult({ success: false, error: err.message || 'Ошибка во время обучения' });
+    } finally {
+      setIsLearning(false);
+    }
+  };
+
   const fetchItems = () => {
     apiFetch('/api/knowledge-base')
       .then(res => res.json())
@@ -141,10 +172,19 @@ export default function KnowledgeBase({ darkMode, t }: { darkMode: boolean, t: a
     }
   };
 
-  const filteredItems = items.filter(i => 
-    i.title.toLowerCase().includes(search.toLowerCase()) || 
-    i.content.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredItems = items.filter(i => {
+    const matchesSearch = i.title.toLowerCase().includes(search.toLowerCase()) || 
+                          i.content.toLowerCase().includes(search.toLowerCase());
+    if (!matchesSearch) return false;
+    
+    if (filterType === 'articles') {
+      return !i.tags.includes('learned-ticket');
+    }
+    if (filterType === 'tickets') {
+      return i.tags.includes('learned-ticket');
+    }
+    return true;
+  });
 
   return (
     <div className="space-y-10">
@@ -154,6 +194,13 @@ export default function KnowledgeBase({ darkMode, t }: { darkMode: boolean, t: a
           <p className="text-slate-500 text-sm mt-2 font-medium italic">{t.context_desc}</p>
         </div>
         <div className="flex items-center gap-4">
+          <button 
+            onClick={() => setShowLearningPanel(!showLearningPanel)} 
+            className={`px-6 py-3 rounded-2xl flex items-center gap-2 text-[10px] font-black border transition-all uppercase tracking-[0.2em] ${showLearningPanel ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-500/20' : (darkMode ? 'border-white/10 bg-white/5 text-slate-400 hover:text-white hover:bg-white/10' : 'border-slate-200 bg-white shadow-lg shadow-slate-200/40 text-slate-500 hover:text-indigo-600')}`}
+          >
+             <BrainCircuit className="w-4 h-4" />
+             ОБУЧЕНИЕ НА ТИКЕТАХ
+          </button>
           <button className={`px-6 py-3 rounded-2xl flex items-center gap-2 text-[10px] font-black border transition-all uppercase tracking-[0.2em] ${darkMode ? 'border-white/10 bg-white/5 text-slate-400 hover:text-white hover:bg-white/10' : 'border-slate-200 bg-white shadow-lg shadow-slate-200/40 text-slate-500 hover:text-indigo-600'}`}>
              <BrainCircuit className="w-4 h-4" />
              {t.reindex_kb}
@@ -164,6 +211,116 @@ export default function KnowledgeBase({ darkMode, t }: { darkMode: boolean, t: a
           </button>
         </div>
       </div>
+
+      {showLearningPanel && (
+        <div className={`p-8 rounded-[2rem] border transition-all relative overflow-hidden ${darkMode ? 'border-indigo-500/20 bg-indigo-500/5 shadow-[0_0_50px_rgba(99,102,241,0.05)]' : 'border-indigo-100 bg-indigo-50/30 shadow-xl shadow-indigo-500/5'}`}>
+          <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
+            <BrainCircuit className="w-40 h-40 text-indigo-500" />
+          </div>
+          
+          <div className="relative z-10 max-w-2xl space-y-6">
+            <div>
+              <h3 className={`text-xl font-black italic tracking-tight ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                {t.ticket_learning_title}
+              </h3>
+              <p className="text-slate-500 text-xs mt-1.5 font-bold leading-relaxed">
+                {t.ticket_learning_desc}
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              {/* Period Select */}
+              <div className="space-y-2">
+                <label className={`block text-[10px] font-black uppercase tracking-wider ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                  {t.analyze_period}
+                </label>
+                <div className="flex gap-2">
+                  {[7, 30, 90].map((days) => (
+                    <button
+                      key={days}
+                      onClick={() => setLearningPeriod(days)}
+                      className={`flex-1 py-2.5 rounded-xl text-[10px] font-black transition-all ${
+                        learningPeriod === days
+                          ? 'bg-indigo-600 text-white shadow-md'
+                          : (darkMode ? 'bg-white/5 border border-white/5 text-slate-400 hover:bg-white/10' : 'bg-white border border-slate-200 text-slate-500 hover:border-slate-300')
+                      }`}
+                    >
+                      {days === 7 ? t.period_7_days : days === 30 ? t.period_30_days : t.period_90_days}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Limit Input */}
+              <div className="space-y-2">
+                <label className={`block text-[10px] font-black uppercase tracking-wider ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                  Лимит тикетов для анализа (защита лимитов)
+                </label>
+                <div className="flex items-center gap-4">
+                  <input
+                    type="range"
+                    min="1"
+                    max="15"
+                    value={learningLimit}
+                    onChange={(e) => setLearningLimit(parseInt(e.target.value))}
+                    className="flex-1 accent-indigo-600 h-1.5 rounded-lg appearance-none cursor-pointer bg-slate-200 dark:bg-white/10"
+                  />
+                  <span className={`text-xs font-black min-w-[20px] text-center ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                    {learningLimit}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Action / Feedback */}
+            <div className="flex items-center gap-4 pt-2">
+              <button
+                disabled={isLearning}
+                onClick={handleStartLearning}
+                className={`px-8 py-3.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-800 text-white rounded-2xl font-black text-[10px] flex items-center gap-2.5 transition-all shadow-lg uppercase tracking-[0.2em] ${isLearning ? 'animate-pulse' : ''}`}
+              >
+                {isLearning ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    {t.learning_progress}
+                  </>
+                ) : (
+                  <>
+                    <BrainCircuit className="w-4 h-4" />
+                    {t.start_learning}
+                  </>
+                )}
+              </button>
+
+              {isLearning && (
+                <span className="text-[10px] font-black text-indigo-500 animate-pulse uppercase tracking-widest">
+                  Бережно анализируем тикеты по одному, чтобы сберечь ваши лимиты токенов...
+                </span>
+              )}
+            </div>
+
+            {/* Results Alert */}
+            {learningResult && (
+              <div className={`p-5 rounded-2xl border text-xs font-bold leading-relaxed ${
+                learningResult.success
+                  ? (darkMode ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-emerald-50 border-emerald-100 text-emerald-700')
+                  : (darkMode ? 'bg-rose-500/10 border-rose-500/20 text-rose-400' : 'bg-rose-50 border-rose-100 text-rose-700')
+              }`}>
+                {learningResult.success ? (
+                  <p>
+                    🎉 {t.learning_success} <span className="font-black underline">{learningResult.count}</span>. 
+                    Агент успешно перенял опыт решения реальных кейсов из Omnidesk и теперь будет использовать эти данные при генерации рекомендаций.
+                  </p>
+                ) : (
+                  <p>
+                    ❌ {t.learning_error} {learningResult.error}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Search & Tabs */}
       <div className={`p-3 rounded-3xl border ${darkMode ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-white/80 shadow-2xl shadow-slate-200/20'} backdrop-blur-md flex items-center gap-6`}>
@@ -178,9 +335,24 @@ export default function KnowledgeBase({ darkMode, t }: { darkMode: boolean, t: a
           />
         </div>
         <div className={`hidden md:flex items-center gap-1.5 p-1.5 rounded-2xl border ${darkMode ? 'bg-black/20 border-white/5' : 'bg-slate-100 border-slate-200'}`}>
-           <button className={`px-6 py-2 rounded-xl text-[10px] font-black tracking-[0.1em] transition-all ${darkMode ? 'bg-white/10 text-white' : 'bg-white text-indigo-600 shadow-sm'}`}>ALL</button>
-           <button className="px-6 py-2 rounded-xl text-[10px] font-black text-slate-500 hover:text-indigo-600 uppercase tracking-[0.1em] transition-all">ARTICLES</button>
-           <button className="px-6 py-2 rounded-xl text-[10px] font-black text-slate-500 hover:text-indigo-600 uppercase tracking-[0.1em] transition-all">TICKET_LOGS</button>
+           <button 
+             onClick={() => setFilterType('all')}
+             className={`px-6 py-2 rounded-xl text-[10px] font-black tracking-[0.1em] transition-all ${filterType === 'all' ? (darkMode ? 'bg-white/10 text-white' : 'bg-white text-indigo-600 shadow-sm') : 'text-slate-500 hover:text-indigo-600'}`}
+           >
+             ALL
+           </button>
+           <button 
+             onClick={() => setFilterType('articles')}
+             className={`px-6 py-2 rounded-xl text-[10px] font-black tracking-[0.1em] transition-all ${filterType === 'articles' ? (darkMode ? 'bg-white/10 text-white' : 'bg-white text-indigo-600 shadow-sm') : 'text-slate-500 hover:text-indigo-600'}`}
+           >
+             ARTICLES
+           </button>
+           <button 
+             onClick={() => setFilterType('tickets')}
+             className={`px-6 py-2 rounded-xl text-[10px] font-black tracking-[0.1em] transition-all ${filterType === 'tickets' ? (darkMode ? 'bg-white/10 text-white' : 'bg-white text-indigo-600 shadow-sm') : 'text-slate-500 hover:text-indigo-600'}`}
+           >
+             TICKETS
+           </button>
         </div>
       </div>
 

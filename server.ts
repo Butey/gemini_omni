@@ -976,6 +976,245 @@ app.post("/api/admin/bookstack/sync", requireAuth, async (req, res) => {
   }
 });
 
+// Omnidesk ticket learning endpoint
+app.post("/api/admin/tickets/learn", requireAuth, async (req, res) => {
+  const { periodDays = 30, limit = 5 } = req.body;
+  logAnalytics('api_call', { endpoint: '/api/admin/tickets/learn', periodDays, limit });
+
+  const hasConfig = settings.omnidesk_domain && settings.omnidesk_api_key && settings.omnidesk_email;
+
+  if (!hasConfig) {
+    // Demo / Fallback Mode when Omnidesk is not configured
+    console.log("[Ticket Learning] Omnidesk not configured. Running in Demo Mode.");
+    
+    const demoTickets = [
+      {
+        id: "demo-t1",
+        subject: "Проблема с подключением к SCADA серверу",
+        messages: [
+          { role: "CLIENT", text: "Здравствуйте! Не могу подключиться к SCADA серверу iRidi со смартфона. Пишет ошибку Connection Refused. На самом сервере всё запущено." },
+          { role: "STAFF", text: "Добрый день! Проверьте, разрешен ли порт 8000 (или тот, который вы указали в настройках) в брандмауэре операционной системы сервера. Также убедитесь, что смартфон находится в той же локальной сети, либо настроен проброс портов на роутере." },
+          { role: "CLIENT", text: "Да, действительно брандмауэр блокировал порт 8000. Отключил или добавил правило — теперь всё подключается моментально! Спасибо!" }
+        ]
+      },
+      {
+        id: "demo-t2",
+        subject: "Сброс пароля от учетной записи девелопера",
+        messages: [
+          { role: "CLIENT", text: "Привет! Забыл пароль от кабинета разработчика iRidi. Ссылка на сброс не приходит на почту dev@company.com. Что делать?" },
+          { role: "STAFF", text: "Приветствую! Проверьте папку 'Спам' или 'Рассылки'. Если письма там нет, возможно ваш почтовый сервер блокирует наши домены iridi.com. Мы отправили вам временный пароль вручную. Смените его в профиле сразу после входа." },
+          { role: "CLIENT", text: "Нашел в спаме! Спасибо за оперативный ответ, временный пароль подошел, сменил на свой." }
+        ]
+      },
+      {
+        id: "demo-t3",
+        subject: "Таймаут опроса Modbus устройств",
+        messages: [
+          { role: "CLIENT", text: "При опросе модулей Modbus RTU через шлюз iRidi UMC часто возникают ошибки таймаута в логах. Период опроса стоит 100мс." },
+          { role: "STAFF", text: "Здравствуйте! Период опроса 100мс слишком мал для шины RS-485, особенно если на ней висит несколько устройств. Рекомендуется увеличить период опроса (Poll Interval) до 500-1000мс и убедиться, что установлены согласующие резисторы 120 Ом на концах линии." },
+          { role: "CLIENT", text: "Поставил 800мс и доставил терминаторы — ошибки полностью пропали! Спасибо за совет." }
+        ]
+      }
+    ];
+
+    const results = [];
+    const pool = getApiKeysPool();
+    
+    for (const ticket of demoTickets) {
+      try {
+        const prompt = `
+          Проанализируй следующий тикет поддержки и составь на его основе качественную статью для Базы Знаний.
+          Статья должна содержать Краткое описание проблемы и Пошаговое решение.
+          
+          Тема тикета: ${ticket.subject}
+          Диалог:
+          ${ticket.messages.map(m => `${m.role}: ${m.text}`).join('\n')}
+          
+          Верни ответ в формате JSON:
+          {
+            "title": "Краткое техническое название проблемы",
+            "content": "Подробное описание проблемы и пошаговая инструкция по решению."
+          }
+        `;
+        
+        let title = `Решение: ${ticket.subject}`;
+        let content = ticket.messages.map(m => `${m.role}: ${m.text}`).join('\n\n');
+        
+        if (pool.length > 0) {
+          try {
+            const activeAi = new GoogleGenAI({ apiKey: pool[0] });
+            const response = await activeAi.models.generateContent({
+              model: settings.model_name,
+              contents: prompt,
+              config: { responseMimeType: 'application/json' }
+            });
+            const text = response.text || '{}';
+            const parsed = JSON.parse(text);
+            if (parsed.title) title = parsed.title;
+            if (parsed.content) content = parsed.content;
+          } catch (llmErr) {
+            console.error("LLM Generation in Demo Learn failed, using local generation fallback:", llmErr);
+          }
+        }
+        
+        const newItem: KnowledgeBaseItem = {
+          id: `learned-demo-${ticket.id}`,
+          title: title,
+          content: content,
+          tags: ['learned-ticket', 'demo-case']
+        };
+        
+        const existingIdx = knowledgeBase.findIndex(item => item.id === newItem.id);
+        if (existingIdx !== -1) {
+          knowledgeBase[existingIdx] = newItem;
+        } else {
+          knowledgeBase.push(newItem);
+        }
+        results.push(newItem);
+      } catch (err) {
+        console.error("Error analyzing demo ticket:", err);
+      }
+    }
+    
+    saveData();
+    // Simulate real network delay for UX satisfaction
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    return res.json({ success: true, count: results.length, isDemo: true, items: results });
+  }
+
+  // Real Omnidesk integration mode
+  try {
+    const domain = settings.omnidesk_domain.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    const auth = Buffer.from(`${settings.omnidesk_email}:${settings.omnidesk_api_key}`).toString('base64');
+
+    console.log(`[Ticket Learning] Fetching cases from https://${domain}/api/cases.json`);
+    const casesRes = await fetch(`https://${domain}/api/cases.json?limit=50`, {
+      headers: { 'Authorization': `Basic ${auth}`, 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(10000)
+    });
+
+    if (!casesRes.ok) {
+      const errText = await casesRes.text();
+      throw new Error(`Omnidesk API returned ${casesRes.status}: ${errText}`);
+    }
+
+    const casesData = await casesRes.json();
+    let casesArray: any[] = [];
+    if (Array.isArray(casesData)) {
+      casesArray = casesData;
+    } else if (typeof casesData === 'object' && casesData !== null) {
+      casesArray = Object.values(casesData).filter((v: any) => v && v.case);
+    }
+
+    // Filter closed/resolved cases
+    const eligibleCases = casesArray
+      .map((c: any) => c.case || c)
+      .filter((c: any) => {
+        const isResolved = c.status === 'resolved' || c.status === 'closed';
+        if (!isResolved) return false;
+        
+        // Filter by date
+        const createdAt = new Date(c.created_at);
+        const cutoffDate = new Date();
+        cutoffDate.setDate(cutoffDate.getDate() - periodDays);
+        return createdAt >= cutoffDate;
+      })
+      .slice(0, limit); // Respect limit
+
+    console.log(`[Ticket Learning] Found ${eligibleCases.length} eligible resolved cases within ${periodDays} days.`);
+
+    const results = [];
+    const pool = getApiKeysPool();
+
+    for (const kase of eligibleCases) {
+      const caseId = kase.case_id;
+      const caseNumber = kase.case_number;
+      
+      // Fetch messages
+      const msgsRes = await fetch(`https://${domain}/api/cases/${caseId}/messages.json`, {
+        headers: { 'Authorization': `Basic ${auth}`, 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(5000)
+      });
+
+      if (!msgsRes.ok) continue;
+
+      const msgsData = await msgsRes.json();
+      let msgsArray: any[] = [];
+      if (Array.isArray(msgsData)) {
+        msgsArray = msgsData;
+      } else if (msgsData._embedded?.messages) {
+        msgsArray = msgsData._embedded.messages;
+      } else if (typeof msgsData === 'object' && msgsData !== null) {
+        msgsArray = Object.values(msgsData).filter((v: any) => v && (v.message || v));
+      }
+
+      const dialogue = msgsArray.map((m: any) => {
+        const msg = m.message || m;
+        const text = msg.content_html ? msg.content_html.replace(/<[^>]+>/g, '') : (msg.content || '');
+        return `${msg.user_id ? 'CLIENT' : 'STAFF'}: ${text}`;
+      }).join('\n\n');
+
+      let title = `Решение тикета #${caseNumber}: ${kase.subject}`;
+      let content = dialogue;
+
+      if (pool.length > 0 && dialogue.trim().length > 50) {
+        try {
+          const prompt = `
+            Проанализируй диалог технической поддержки и сформируй на его основе полезную статью для Базы Знаний.
+            Выдели ключевую проблему клиента и итоговое решение, которое помогло.
+            Избегай лишней вежливости и приветствий, пиши кратко и по делу.
+            
+            Тема: ${kase.subject}
+            История обращений:
+            ${dialogue}
+            
+            Выведи строго валидный JSON в формате:
+            {
+              "title": "Понятное и емкое техническое название проблемы",
+              "content": "Суть проблемы и конкретные шаги, которые привели к решению."
+            }
+          `;
+
+          const activeAi = new GoogleGenAI({ apiKey: pool[0] });
+          const response = await activeAi.models.generateContent({
+            model: settings.model_name,
+            contents: prompt,
+            config: { responseMimeType: 'application/json' }
+          });
+          const text = response.text || '{}';
+          const parsed = JSON.parse(text);
+          if (parsed.title) title = parsed.title;
+          if (parsed.content) content = parsed.content;
+        } catch (err) {
+          console.error(`[Ticket Learning] Failed to use LLM for case ${caseNumber}:`, err);
+        }
+      }
+
+      const newItem: KnowledgeBaseItem = {
+        id: `learned-ticket-${caseNumber}`,
+        title: title,
+        content: content,
+        tags: ['learned-ticket', `case-${caseNumber}`]
+      };
+
+      // Push and update
+      const existingIdx = knowledgeBase.findIndex(item => item.id === newItem.id);
+      if (existingIdx !== -1) {
+        knowledgeBase[existingIdx] = newItem;
+      } else {
+        knowledgeBase.push(newItem);
+      }
+      results.push(newItem);
+    }
+
+    saveData();
+    res.json({ success: true, count: results.length, isDemo: false, items: results });
+  } catch (error: any) {
+    console.error("Real Ticket Learning Error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.post("/api/knowledge-base", requireAuth, (req, res) => {
   const newItem = { id: Math.random().toString(36).substr(2, 9), ...req.body };
   knowledgeBase.push(newItem);

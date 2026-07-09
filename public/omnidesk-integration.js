@@ -654,7 +654,6 @@ $(function() {
         };
 
         performInjection();
-        setTimeout(performInjection, 80);
       }
     });
 });
