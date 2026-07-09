@@ -6,6 +6,8 @@ import { Suggestion, AppSettings } from '../types';
 const stripMarkdown = (text: string): string => {
   if (!text) return '';
   return text
+    // Convert links [Text](URL) -> Text (URL) so links are preserved in plain text
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1 ($2)')
     // Remove bold/italic formatting
     .replace(/\*\*([^*]+)\*\*/g, '$1')
     .replace(/\*([^*]+)\*/g, '$1')
@@ -17,23 +19,47 @@ const stripMarkdown = (text: string): string => {
     .replace(/^(#{1,6})\s*(.+)$/gm, '$2')
     // Remove lists markers (e.g. * Item, - Item, but keep bullet structure)
     .replace(/^[-*+]\s+(.+)$/gm, '• $1')
-    // Remove links [Text](URL) -> Text
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
     .trim();
 };
 
 const parseInlineStyles = (text: string) => {
-  const boldParts = text.split(/(\*\*[^*]+\*\*)/g);
-  return boldParts.map((part, partIdx) => {
-    if (part.startsWith('**') && part.endsWith('**')) {
-      return <strong key={partIdx} className="font-extrabold text-indigo-500 dark:text-indigo-400">{part.slice(2, -2)}</strong>;
+  if (!text) return '';
+  
+  // Split by markdown links: [Text](URL)
+  const linkParts = text.split(/(\[[^\]]+\]\([^)]+\))/g);
+  
+  return linkParts.map((part, idx) => {
+    const linkMatch = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+    if (linkMatch) {
+      const [_, linkText, linkUrl] = linkMatch;
+      return (
+        <a 
+          key={idx} 
+          href={linkUrl} 
+          target="_blank" 
+          rel="noopener noreferrer" 
+          className="text-indigo-500 dark:text-indigo-400 hover:underline font-extrabold"
+        >
+          {linkText}
+        </a>
+      );
     }
-    const italicParts = part.split(/(\*[^*]+\*)/g);
-    return italicParts.map((subPart, subPartIdx) => {
-      if (subPart.startsWith('*') && subPart.endsWith('*')) {
-        return <em key={subPartIdx} className="italic">{subPart.slice(1, -1)}</em>;
+    
+    const boldParts = part.split(/(\*\*[^*]+\*\*)/g);
+    return boldParts.map((bPart, bIdx) => {
+      const key = `${idx}-${bIdx}`;
+      if (bPart.startsWith('**') && bPart.endsWith('**')) {
+        return <strong key={key} className="font-extrabold text-indigo-500 dark:text-indigo-400">{bPart.slice(2, -2)}</strong>;
       }
-      return subPart;
+      
+      const italicParts = bPart.split(/(\*[^*]+\*)/g);
+      return italicParts.map((iPart, iIdx) => {
+        const iKey = `${key}-${iIdx}`;
+        if (iPart.startsWith('*') && iPart.endsWith('*')) {
+          return <em key={iKey} className="italic">{iPart.slice(1, -1)}</em>;
+        }
+        return iPart;
+      });
     });
   });
 };

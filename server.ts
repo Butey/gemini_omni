@@ -457,7 +457,8 @@ app.post("/api/chat", async (req, res) => {
               if (!pageData.markdown && pageData.html) {
                 cleanContent = pageData.html.replace(/<[^>]*>?/gm, '');
               }
-              dynamicKnowledge += `- BookStack: ${pageData.name}: ${cleanContent.substring(0, 2000)}\n`;
+              const pageUrl = `${settings.bookstack_url.replace(/\/$/, '')}/books/${pageData.book_id}/page/${pageData.slug || pageData.id}`;
+              dynamicKnowledge += `- BookStack Article "${pageData.name}" (Direct URL: ${pageUrl}): ${cleanContent.substring(0, 2000)}\n`;
             }
           }
         }
@@ -489,6 +490,11 @@ app.post("/api/chat", async (req, res) => {
       Always respond directly to the "Latest User Query" taking into account the "Chat History" and context.
       Your conversational response to the agent MUST be placed in the "reply" field. 
       ONLY if the agent asks for a draft to send to the customer, OR if providing a draft would be highly relevant and helpful, you can include up to 3 drafts in the "suggestions" array.
+      
+      CRITICAL FOR BOOKSTACK ARTICLES:
+      If you refer to any BookStack article or recommend a wiki page, you MUST ALWAYS provide the direct clickable Markdown link for it in the format: [Article Name](URL).
+      The URL is provided in the source metadata (e.g. "Direct URL: ..." or "Read more at: ...").
+      NEVER just output the article name, ID, or slug as plain text without a direct Markdown link! Always wrap it in [Article Name](URL).
       
       Output ONLY valid JSON in the exact format: 
       { "reply": "Your conversational response to the agent here", "suggestions": [{ "title": "Short title", "text": "Draft reply to customer", "type": "Draft" }] }
