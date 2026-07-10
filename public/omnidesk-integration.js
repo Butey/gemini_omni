@@ -531,11 +531,11 @@ $(function() {
             });
           }
         } else {
-          tabElement = document.querySelector('.js-reply-tab, #add_message, #reply-tab, [data-tab="reply"], [data-type="message"], [data-pane="reply"]');
+          tabElement = document.querySelector('.js-reply-tab, .js-chat-tab, #add_message, #reply-tab, #chat-tab, [data-tab="reply"], [data-tab="chat"], [data-type="message"], [data-type="chat"], [data-pane="reply"], [data-pane="chat"]');
           if (!tabElement) {
             tabElement = Array.from(document.querySelectorAll('a, button, span, div, li')).find(el => {
               const text = el.textContent.trim().toLowerCase();
-              return text === 'ответ' || text === 'написать ответ' || text === 'сообщение' || text === 'ответить';
+              return text === 'ответ' || text === 'написать ответ' || text === 'сообщение' || text === 'ответить' || text === 'чат' || text === 'написать в чат' || text === 'диалог';
             });
           }
         }
@@ -600,22 +600,41 @@ $(function() {
               console.warn('AI Widget: Redactor jQuery synchronization warning', e);
             }
             injected = true;
-          }
+          } else {
+            // ONLY search and write to textarea if there is no rich editor div
+            if (!textarea && container) {
+              textarea = container.querySelector('textarea');
+            }
+            if (!textarea) {
+              const specificSelectors = isNote 
+                ? ['textarea[name="note"]', 'textarea#note_content'] 
+                : ['textarea[name="content"]', 'textarea#reply_content', 'textarea[name="chat_message"]', 'textarea[name="message"]', 'textarea.chat-input'];
+              
+              for (const sel of specificSelectors) {
+                const el = document.querySelector(sel);
+                if (el) {
+                  textarea = el;
+                  break;
+                }
+              }
+            }
+            
+            // Last resort fallback: find any visible textarea on the screen
+            if (!textarea) {
+              textarea = Array.from(document.querySelectorAll('textarea')).find(el => {
+                const r = el.getBoundingClientRect();
+                return r.width > 0 && r.height > 0;
+              });
+            }
 
-          if (!textarea && container) {
-            textarea = container.querySelector('textarea');
-          }
-          if (!textarea) {
-            textarea = document.querySelector(isNote ? 'textarea[name="note"], textarea#note_content' : 'textarea[name="content"], textarea#reply_content');
-          }
-
-          if (textarea) {
-            console.log('AI Widget Integration: Found textarea, appending text');
-            const val = textarea.value;
-            textarea.value = (val ? val + '\n\n' : '') + draftText;
-            textarea.dispatchEvent(new Event('input', { bubbles: true }));
-            textarea.dispatchEvent(new Event('change', { bubbles: true }));
-            injected = true;
+            if (textarea) {
+              console.log('AI Widget Integration: Found textarea, appending text');
+              const val = textarea.value;
+              textarea.value = (val ? val + '\n\n' : '') + draftText;
+              textarea.dispatchEvent(new Event('input', { bubbles: true }));
+              textarea.dispatchEvent(new Event('change', { bubbles: true }));
+              injected = true;
+            }
           }
 
           return injected;
@@ -631,8 +650,8 @@ $(function() {
             );
           } else {
             success = injectIntoContainer(
-              '#case_reply_form, .reply-block, .reply_form_block, .js-reply-form, .case-reply-editor-holder',
-              ['textarea[name="content"]', 'textarea#reply_content', '#reply_content'],
+              '#case_reply_form, #case_chat_form, .reply-block, .chat-block, .reply_form_block, .chat_form_block, .js-reply-form, .js-chat-form, .case-reply-editor-holder, .case-chat-editor-holder, .chat-editor-holder, #chat_block',
+              ['textarea[name="content"]', 'textarea#reply_content', '#reply_content', 'textarea[name="chat_message"]', 'textarea[name="message"]', 'textarea.chat-input'],
               false
             );
           }
