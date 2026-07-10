@@ -478,201 +478,47 @@ $(function() {
       injectWidget();
     }
 
-    // 3. Обрабатываем событие вставки текста от виджета
-    window.addEventListener('message', function(event) {
-      if (event.data && typeof event.data.type === 'string' && event.data.type.startsWith('OMNIDESK_')) {
-        console.log('AI Widget Integration: Received message', event.data);
-      }
-      
-      if (event.data && event.data.type === 'OMNIDESK_DRAG_START') {
-        isDragging = true;
-        hasMoved = false;
-        const rect = container.getBoundingClientRect();
-        switchToLeftTop(rect);
-        
-        startX = event.data.clientX + rect.left;
-        startY = event.data.clientY + rect.top;
-        startLeft = rect.left;
-        startTop = rect.top;
-        
-        iframe.style.pointerEvents = 'none'; // Prevent iframe from stealing mouse events during drag
-        dragOverlay.style.display = 'block';
-        dragOverlay.style.cursor = 'move';
-        
-        document.addEventListener('mousemove', drag);
-        document.addEventListener('mouseup', dragEnd);
-        
-        console.log('AI Widget Integration: Drag initiated', { startX, startY, startLeft, startTop });
-      }
-
-      if (event.data && event.data.type === 'OMNIDESK_RESIZE_WIDGET') {
-        if (event.data.isCollapsed) {
-          container.style.height = '96px';
-          resizer.style.display = 'none';
-        } else {
-          container.style.height = lastHeight + 'px';
-          resizer.style.display = 'block';
+    // 3. Обрабатываем событие вставки текста от виджета (защита от дублирования листенеров)
+    if (!window.__omniai_listener_registered) {
+      window.__omniai_listener_registered = true;
+      window.addEventListener('message', function(event) {
+        if (event.data && typeof event.data.type === 'string' && event.data.type.startsWith('OMNIDESK_')) {
+          console.log('AI Widget Integration: Received message', event.data);
         }
-      }
-      if (event.data && event.data.type === 'OMNIDESK_INJECT_RESPONSE') {
-        const draftText = event.data.content;
-        const target = event.data.target || 'message'; // 'message' or 'note'
         
-        console.log('AI Widget Integration: Injecting response into target:', target);
-        
-        // 1. Попытка переключить вкладку в Omnidesk (чтобы агент видел куда вставляется текст)
-        let tabElement = null;
-        if (target === 'note') {
-          tabElement = document.querySelector('.js-note-tab, #add_note, #note-tab, [data-tab="note"], [data-type="note"], [data-pane="note"]');
-          if (!tabElement) {
-            tabElement = Array.from(document.querySelectorAll('a, button, span, div, li')).find(el => {
-              const text = el.textContent.trim().toLowerCase();
-              return text === 'заметка' || text === 'добавить заметку' || text === 'внутренняя заметка' || text === 'создать заметку';
-            });
-          }
-        } else {
-          tabElement = document.querySelector('.js-reply-tab, .js-chat-tab, #add_message, #reply-tab, #chat-tab, [data-tab="reply"], [data-tab="chat"], [data-type="message"], [data-type="chat"], [data-pane="reply"], [data-pane="chat"]');
-          if (!tabElement) {
-            tabElement = Array.from(document.querySelectorAll('a, button, span, div, li')).find(el => {
-              const text = el.textContent.trim().toLowerCase();
-              return text === 'ответ' || text === 'написать ответ' || text === 'сообщение' || text === 'ответить' || text === 'чат' || text === 'написать в чат' || text === 'диалог';
-            });
-          }
+        if (event.data && event.data.type === 'OMNIDESK_DRAG_START') {
+          isDragging = true;
+          hasMoved = false;
+          const rect = container.getBoundingClientRect();
+          switchToLeftTop(rect);
+          
+          startX = event.data.clientX + rect.left;
+          startY = event.data.clientY + rect.top;
+          startLeft = rect.left;
+          startTop = rect.top;
+          
+          iframe.style.pointerEvents = 'none'; // Prevent iframe from stealing mouse events during drag
+          dragOverlay.style.display = 'block';
+          dragOverlay.style.cursor = 'move';
+          
+          document.addEventListener('mousemove', drag);
+          document.addEventListener('mouseup', dragEnd);
+          
+          console.log('AI Widget Integration: Drag initiated', { startX, startY, startLeft, startTop });
         }
 
-        if (tabElement) {
-          console.log('AI Widget Integration: Clicking tab element', tabElement);
-          tabElement.click();
-        }
-
-        // 2. Функция для вставки текста в контейнер редактора
-        function injectIntoContainer(containerSelector, fallbackSelectors, isNote) {
-          const container = document.querySelector(containerSelector);
-          let editorDiv = null;
-          let textarea = null;
-
-          if (container) {
-            editorDiv = container.querySelector('.redactor-editor, .redactor_editor, div[contenteditable="true"]');
-            textarea = container.querySelector('textarea');
+        if (event.data && event.data.type === 'OMNIDESK_RESIZE_WIDGET') {
+          if (event.data.isCollapsed) {
+            container.style.height = '96px';
+            resizer.style.display = 'none';
           } else {
-            for (const sel of fallbackSelectors) {
-              const el = document.querySelector(sel);
-              if (el) {
-                if (el.tagName === 'TEXTAREA') textarea = el;
-                else if (el.getAttribute('contenteditable') === 'true' || el.classList.contains('redactor-editor')) editorDiv = el;
-              }
-            }
+            container.style.height = lastHeight + 'px';
+            resizer.style.display = 'block';
           }
-
-          if (!editorDiv && !textarea) {
-            const allEditors = Array.from(document.querySelectorAll('.redactor-editor, .redactor_editor, div[contenteditable="true"]'));
-            editorDiv = allEditors.find(el => {
-              const rect = el.getBoundingClientRect();
-              return rect.width > 0 && rect.height > 0;
-            }) || allEditors[0];
-          }
-
-          let injected = false;
-
-          if (editorDiv) {
-            console.log('AI Widget Integration: Found editor div, inserting text');
-            const currentHTML = editorDiv.innerHTML.trim();
-            const p = document.createElement('p');
-            p.innerText = draftText;
-            
-            if (currentHTML && currentHTML !== '<p><br></p>') {
-              editorDiv.appendChild(p);
-            } else {
-              editorDiv.innerHTML = '';
-              editorDiv.appendChild(p);
-            }
-            
-            editorDiv.dispatchEvent(new Event('input', { bubbles: true }));
-            editorDiv.dispatchEvent(new Event('change', { bubbles: true }));
-            editorDiv.dispatchEvent(new Event('blur', { bubbles: true }));
-            
-            try {
-              const $editor = window.jQuery ? window.jQuery(editorDiv) : null;
-              if ($editor && typeof $editor.redactor === 'function') {
-                $editor.redactor('code.set', editorDiv.innerHTML);
-              }
-            } catch (e) {
-              console.warn('AI Widget: Redactor jQuery synchronization warning', e);
-            }
-            injected = true;
-          } else {
-            // ONLY search and write to textarea if there is no rich editor div
-            if (!textarea && container) {
-              textarea = container.querySelector('textarea');
-            }
-            if (!textarea) {
-              const specificSelectors = isNote 
-                ? ['textarea[name="note"]', 'textarea#note_content'] 
-                : ['textarea[name="content"]', 'textarea#reply_content', 'textarea[name="chat_message"]', 'textarea[name="message"]', 'textarea.chat-input'];
-              
-              for (const sel of specificSelectors) {
-                const el = document.querySelector(sel);
-                if (el) {
-                  textarea = el;
-                  break;
-                }
-              }
-            }
-            
-            // Last resort fallback: find any visible textarea on the screen
-            if (!textarea) {
-              textarea = Array.from(document.querySelectorAll('textarea')).find(el => {
-                const r = el.getBoundingClientRect();
-                return r.width > 0 && r.height > 0;
-              });
-            }
-
-            if (textarea) {
-              console.log('AI Widget Integration: Found textarea, appending text');
-              const val = textarea.value;
-              textarea.value = (val ? val + '\n\n' : '') + draftText;
-              textarea.dispatchEvent(new Event('input', { bubbles: true }));
-              textarea.dispatchEvent(new Event('change', { bubbles: true }));
-              injected = true;
-            }
-          }
-
-          return injected;
         }
-
-        const performInjection = () => {
-          let success = false;
-          if (target === 'note') {
-            success = injectIntoContainer(
-              '#case_note_form, .note-block, .note_form_block, .js-note-form, .case-note-editor-holder',
-              ['textarea[name="note"]', 'textarea#note_content', '#add_note_form'],
-              true
-            );
-          } else {
-            success = injectIntoContainer(
-              '#case_reply_form, #case_chat_form, .reply-block, .chat-block, .reply_form_block, .chat_form_block, .js-reply-form, .js-chat-form, .case-reply-editor-holder, .case-chat-editor-holder, .chat-editor-holder, #chat_block',
-              ['textarea[name="content"]', 'textarea#reply_content', '#reply_content', 'textarea[name="chat_message"]', 'textarea[name="message"]', 'textarea.chat-input'],
-              false
-            );
-          }
-
-          if (!success) {
-            console.warn('AI Widget: Could not target specific editor. Trying visible editor fallback.');
-            const visibleEditor = Array.from(document.querySelectorAll('.redactor-editor, .redactor_editor')).find(el => {
-              const r = el.getBoundingClientRect();
-              return r.width > 0 && r.height > 0;
-            });
-            if (visibleEditor) {
-              const p = document.createElement('p');
-              p.innerText = draftText;
-              visibleEditor.appendChild(p);
-              visibleEditor.dispatchEvent(new Event('input', { bubbles: true }));
-              visibleEditor.dispatchEvent(new Event('change', { bubbles: true }));
-            }
-          }
-        };
-
-        performInjection();
-      }
-    });
+        if (event.data && event.data.type === 'OMNIDESK_INJECT_RESPONSE') {
+          console.log('AI Widget Integration: Response insertion is now securely handled server-side via the Omnidesk REST API.');
+        }
+      });
+    }
 });
