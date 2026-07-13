@@ -366,7 +366,7 @@ app.post("/api/omnidesk/cases/:caseNumber/messages", async (req, res) => {
 
 app.post("/api/omnidesk/cases/:caseNumber/notes", async (req, res) => {
   const { caseNumber } = req.params;
-  const { content } = req.body;
+  const { content, staff_id, staff_email } = req.body;
   if (!content) {
     return res.status(400).json({ error: "Content is required" });
   }
@@ -383,7 +383,17 @@ app.post("/api/omnidesk/cases/:caseNumber/notes", async (req, res) => {
     const domain = settings.omnidesk_domain.replace(/^https?:\/\//, '').replace(/\/$/, '');
     const auth = Buffer.from(`${settings.omnidesk_email}:${settings.omnidesk_api_key}`).toString('base64');
 
-    console.log(`Adding note to case ${resolvedId} via Omnidesk API`);
+    console.log(`Adding note to case ${resolvedId} via Omnidesk API, staff_id: ${staff_id}, staff_email: ${staff_email}`);
+    
+    const notePayload: any = {
+      content: content
+    };
+    if (staff_id) {
+      notePayload.staff_id = staff_id;
+    } else if (staff_email) {
+      notePayload.staff_email = staff_email;
+    }
+
     const omniRes = await fetch(`https://${domain}/api/cases/${resolvedId}/notes.json`, {
       method: 'POST',
       headers: {
@@ -391,9 +401,7 @@ app.post("/api/omnidesk/cases/:caseNumber/notes", async (req, res) => {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        note: {
-          content: content
-        }
+        note: notePayload
       }),
       signal: AbortSignal.timeout(5000)
     });
