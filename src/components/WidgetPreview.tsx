@@ -148,13 +148,15 @@ export function WidgetUI({ darkMode, t, settings }: { darkMode: boolean, t: any,
   // Messaging Bridge: Send content to Omnidesk Parent
   const applyDraft = async (text: string, target: 'message' | 'note' = 'message') => {
     const cleanText = stripMarkdown(text);
+    const uniqueMessageId = Date.now() + '_' + Math.random().toString(36).substring(2, 11);
 
     // 1. Send postMessage for injection inside parent Omnidesk window
     if (typeof window !== 'undefined' && window.parent) {
       window.parent.postMessage({
         type: 'OMNIDESK_INJECT_RESPONSE',
         target: target,
-        content: cleanText
+        content: cleanText,
+        messageId: uniqueMessageId
       }, '*');
     }
 
