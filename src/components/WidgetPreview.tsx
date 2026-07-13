@@ -145,12 +145,11 @@ export function WidgetUI({ darkMode, t, settings }: { darkMode: boolean, t: any,
     return false;
   });
 
-  // Messaging Bridge: Send content to Omnidesk Parent and API
+  // Messaging Bridge: Send content to Omnidesk Parent
   const applyDraft = async (text: string, target: 'message' | 'note' = 'message') => {
     const cleanText = stripMarkdown(text);
-    const isMock = isStandalone || caseNumber === 'OMNIDESK_ACTIVE_TICKET' || caseNumber.startsWith('#');
 
-    // 1. Send postMessage for mock preview mode (so the local preview interface updates on screen)
+    // 1. Send postMessage for injection inside parent Omnidesk window
     if (typeof window !== 'undefined' && window.parent) {
       window.parent.postMessage({
         type: 'OMNIDESK_INJECT_RESPONSE',
@@ -160,9 +159,11 @@ export function WidgetUI({ darkMode, t, settings }: { darkMode: boolean, t: any,
     }
 
     // 2. Clipboard fallback (still very helpful for support agents)
+    let copied = false;
     try {
       if (navigator.clipboard) {
         await navigator.clipboard.writeText(cleanText);
+        copied = true;
       }
     } catch (err) {
       console.warn('Failed to copy to clipboard:', err);
@@ -171,52 +172,14 @@ export function WidgetUI({ darkMode, t, settings }: { darkMode: boolean, t: any,
     const btn = document.activeElement as HTMLElement;
     const originalText = btn ? btn.innerText : '';
     if (btn) {
-      btn.innerText = 'Отправка...';
+      btn.innerText = target === 'message' 
+        ? (copied ? 'Вставлено в ответ!' : 'Отправлено!') 
+        : (copied ? 'Вставлено в заметку!' : 'Отправлено!');
       btn.style.pointerEvents = 'none';
-    }
-
-    if (!isMock) {
-      const endpoint = target === 'note' 
-        ? `/api/omnidesk/cases/${caseNumber}/notes` 
-        : `/api/omnidesk/cases/${caseNumber}/messages`;
-
-      try {
-        const response = await fetch(endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content: cleanText })
-        });
-        const resData = await response.json();
-        if (!response.ok) {
-          throw new Error(resData.error || 'Server error');
-        }
-        if (btn) {
-          btn.innerText = target === 'note' ? 'Заметка добавлена!' : 'Ответ добавлен!';
-        }
-      } catch (err: any) {
-        console.error('Failed to post to Omnidesk API:', err);
-        if (btn) {
-          btn.innerText = 'Ошибка API, скопировано!';
-        }
-      } finally {
-        if (btn) {
-          setTimeout(() => {
-            btn.style.pointerEvents = 'auto';
-            btn.innerText = originalText;
-          }, 2500);
-        }
-      }
-    } else {
-      // Simulate successful API send in mock/standalone mode
       setTimeout(() => {
-        if (btn) {
-          btn.innerText = target === 'message' ? 'Вставлено в ответ!' : 'Вставлено в заметку!';
-          btn.style.pointerEvents = 'auto';
-          setTimeout(() => {
-            btn.innerText = originalText;
-          }, 2000);
-        }
-      }, 600);
+        btn.style.pointerEvents = 'auto';
+        btn.innerText = originalText;
+      }, 2000);
     }
   };
 

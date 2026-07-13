@@ -517,7 +517,176 @@ $(function() {
           }
         }
         if (event.data && event.data.type === 'OMNIDESK_INJECT_RESPONSE') {
-          console.log('AI Widget Integration: Response insertion is now securely handled server-side via the Omnidesk REST API.');
+          const draftText = event.data.content;
+          const target = event.data.target || 'message'; // 'message' or 'note'
+          
+          console.log('AI Widget Integration: Injecting draft response locally, target:', target);
+          
+          // Проверяем, чат ли это (Телеграм, WhatsApp, чаты Омнидеска имеют специальную структуру)
+          const isChatPage = document.querySelector('.chat_chat_msg_win_wrap, .chat_chat_structure') !== null;
+          
+          if (isChatPage) {
+            console.log('AI Widget: Detected Chat/Messenger Case page');
+            
+            // 1. Управление режимом Заметка/Ответ для чатов через кнопку и hidden input
+            const noteInput = document.getElementById('b_response_note');
+            const noteButton = document.querySelector('.chat_btn_connect_c, li.chat_btn_connect_c, li[title*="заметку"], li[title*="Заметку"]');
+            
+            if (noteInput && noteButton) {
+              const isNoteActive = noteInput.value === '1';
+              if (target === 'note' && !isNoteActive) {
+                console.log('AI Widget: Toggling chat mode to Note');
+                noteButton.click();
+              } else if (target === 'message' && isNoteActive) {
+                console.log('AI Widget: Toggling chat mode to Reply');
+                noteButton.click();
+              }
+            }
+            
+            // 2. Вставка текста в чат-редактор
+            const chatTextarea = document.getElementById('comment') || document.querySelector('textarea.chat_msg_win_box');
+            if (chatTextarea) {
+              chatTextarea.focus();
+              const start = chatTextarea.selectionStart;
+              const end = chatTextarea.selectionEnd;
+              const val = chatTextarea.value;
+              
+              if (typeof start === 'number' && typeof end === 'number') {
+                chatTextarea.value = val.substring(0, start) + draftText + val.substring(end);
+                chatTextarea.selectionStart = chatTextarea.selectionEnd = start + draftText.length;
+              } else {
+                chatTextarea.value = (val ? val + '\n\n' : '') + draftText;
+              }
+              
+              // Генерируем реактивные события
+              chatTextarea.dispatchEvent(new Event('input', { bubbles: true }));
+              chatTextarea.dispatchEvent(new Event('change', { bubbles: true }));
+              chatTextarea.dispatchEvent(new Event('blur', { bubbles: true }));
+              chatTextarea.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Process' }));
+              chatTextarea.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: 'Process' }));
+            } else {
+              console.warn('AI Widget: Chat editor textarea not found');
+            }
+          } else {
+            console.log('AI Widget: Detected Standard Case/Email page');
+            
+            // 1. Переключение вкладки Ответ / Заметка в стандартном тикете
+            let tabElement = null;
+            if (target === 'note') {
+              tabElement = document.querySelector('.js-note-tab, #add_note, #note-tab, [data-tab="note"], [data-type="note"], [data-pane="note"]');
+              if (!tabElement) {
+                tabElement = Array.from(document.querySelectorAll('a, button, span, div, li')).find(el => {
+                  const text = el.textContent.trim().toLowerCase();
+                  return text === 'заметка' || text === 'добавить заметку' || text === 'внутренняя заметка' || text === 'создать заметку';
+                });
+              }
+            } else {
+              tabElement = document.querySelector('.js-reply-tab, .js-chat-tab, #add_message, #reply-tab, #chat-tab, [data-tab="reply"], [data-tab="chat"], [data-type="message"], [data-type="chat"], [data-pane="reply"], [data-pane="chat"]');
+              if (!tabElement) {
+                tabElement = Array.from(document.querySelectorAll('a, button, span, div, li')).find(el => {
+                  const text = el.textContent.trim().toLowerCase();
+                  return text === 'ответ' || text === 'написать ответ' || text === 'сообщение' || text === 'ответить' || text === 'чат' || text === 'написать в чат' || text === 'диалог';
+                });
+              }
+            }
+
+            if (tabElement) {
+              console.log('AI Widget: Switching ticket tab', tabElement);
+              tabElement.click();
+            }
+            
+            // 2. Поиск контейнера формы
+            let containerSelector = '';
+            let fallbackSelectors = [];
+            
+            if (target === 'note') {
+              containerSelector = '#case_note_form, .note-block, .note_form_block, .js-note-form, .case-note-editor-holder';
+              fallbackSelectors = ['textarea[name="note"]', 'textarea#note_content', '#add_note_form'];
+            } else {
+              containerSelector = '#case_reply_form, #case_chat_form, .reply-block, .chat-block, .reply_form_block, .chat_form_block, .js-reply-form, .js-chat-form, .case-reply-editor-holder, .case-chat-editor-holder, .chat-editor-holder, #chat_block';
+              fallbackSelectors = ['textarea[name="content"]', 'textarea#reply_content', '#reply_content', 'textarea[name="chat_message"]', 'textarea[name="message"]', 'textarea.chat-input'];
+            }
+            
+            const container = document.querySelector(containerSelector);
+            let editorDiv = null;
+            let textarea = null;
+            
+            if (container) {
+              editorDiv = container.querySelector('.redactor-editor, .redactor_editor, div[contenteditable="true"]');
+              if (!editorDiv) {
+                textarea = container.querySelector('textarea');
+              }
+            }
+            
+            // Фолбэк по селекторам из списка
+            if (!editorDiv && !textarea) {
+              for (const sel of fallbackSelectors) {
+                const el = document.querySelector(sel);
+                if (el) {
+                  if (el.tagName === 'TEXTAREA') textarea = el;
+                  else if (el.getAttribute('contenteditable') === 'true' || el.classList.contains('redactor-editor')) editorDiv = el;
+                }
+              }
+            }
+            
+            // Исключительный фолбэк по всем видимым редакторам
+            if (!editorDiv && !textarea) {
+              const allEditors = Array.from(document.querySelectorAll('.redactor-editor, .redactor_editor, div[contenteditable="true"]'));
+              editorDiv = allEditors.find(el => {
+                const r = el.getBoundingClientRect();
+                return r.width > 0 && r.height > 0;
+              }) || allEditors[0];
+            }
+            
+            // Выполняем вставку
+            if (editorDiv) {
+              console.log('AI Widget: Inserting into contenteditable editor');
+              editorDiv.focus();
+              const currentHTML = editorDiv.innerHTML.trim();
+              const p = document.createElement('p');
+              p.innerText = draftText;
+              
+              if (currentHTML && currentHTML !== '<p><br></p>') {
+                editorDiv.appendChild(p);
+              } else {
+                editorDiv.innerHTML = '';
+                editorDiv.appendChild(p);
+              }
+              
+              editorDiv.dispatchEvent(new Event('input', { bubbles: true }));
+              editorDiv.dispatchEvent(new Event('change', { bubbles: true }));
+              editorDiv.dispatchEvent(new Event('blur', { bubbles: true }));
+              
+              // Синхронизация с Redactor jQuery
+              try {
+                const $editor = window.jQuery ? window.jQuery(editorDiv) : null;
+                if ($editor && typeof $editor.redactor === 'function') {
+                  $editor.redactor('code.set', editorDiv.innerHTML);
+                }
+              } catch (e) {
+                console.warn('AI Widget: Redactor jQuery synchronization warning', e);
+              }
+            } else if (textarea) {
+              console.log('AI Widget: Inserting into textarea');
+              textarea.focus();
+              const start = textarea.selectionStart;
+              const end = textarea.selectionEnd;
+              const val = textarea.value;
+              
+              if (typeof start === 'number' && typeof end === 'number') {
+                textarea.value = val.substring(0, start) + draftText + val.substring(end);
+                textarea.selectionStart = textarea.selectionEnd = start + draftText.length;
+              } else {
+                textarea.value = (val ? val + '\n\n' : '') + draftText;
+              }
+              
+              textarea.dispatchEvent(new Event('input', { bubbles: true }));
+              textarea.dispatchEvent(new Event('change', { bubbles: true }));
+              textarea.dispatchEvent(new Event('blur', { bubbles: true }));
+            } else {
+              console.warn('AI Widget: No visible editor or textarea found for injection');
+            }
+          }
         }
       });
     }
